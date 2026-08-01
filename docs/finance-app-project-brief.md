@@ -1,0 +1,102 @@
+# Household Finance App — Project Brief
+
+## Goal
+
+A self-hosted, cross-platform (iPhone + Android) personal finance app that:
+- Connects to bank/credit card accounts and pulls transactions automatically
+- Categorizes expenses with AI against a defined budget structure
+- Tracks budget-vs-actual and spending trends over time
+- Tracks investments and net worth alongside cash accounts
+- Eventually supports 3–5 year "what-if" scenario forecasting (big purchases, retirement, career changes) and their cash flow impact
+- Stores all data on your own NAS — no third-party cloud platform holds your financial data
+- Built to potentially evolve into a shareable/sellable product later, without having to rebuild the foundation
+
+## Feature scope
+
+Mapped from Monarch Core's feature set, tuned to what actually matters for this project — not a full clone.
+
+**Build:**
+- Multi-account connection (bank, credit card, investment) via SimpleFIN
+- Net worth dashboard combining cash + investment balances
+- AI categorization against your own category taxonomy (four-bucket framework + everyday spending categories)
+- Budget vs. actual, by category and by month
+- Spending trend charts over time
+- Recurring transaction / subscription detection
+- Household view (joint access for you and your wife)
+- Manual account/adjustment entry (for anything SimpleFIN can't reach)
+
+**Skip (Monarch features that don't apply here):**
+- Business/rental P&L mode
+- RSU/equity compensation tracking
+- Morningstar-grade investment analysis
+- Credit score monitoring
+- Receipt scanning
+
+**Deferred to Phase 5:**
+- 3–5 year what-if scenario forecasting
+
+## Tech stack
+
+| Layer | Choice | Why |
+|---|---|---|
+| Mobile app | Expo (React Native) | One codebase → iPhone + Android; run via dev build/TestFlight without app store approval for personal use |
+| Backend API | Node.js + Express (or FastAPI if you prefer Python) | Simple REST layer between the app and your data; easy to containerize |
+| Database | SQLite | File-based, zero-admin, plenty for single-household scale; trivial to back up |
+| Bank connection | SimpleFIN Bridge (~$1.50/mo) | Personal-use bank aggregator; read-only; the only piece that talks to the outside world |
+| Categorization | Claude API | System prompt encodes your budget categories/four-bucket framework; called per transaction batch |
+| Hosting | Docker container on your UGREEN NAS | Most NAS OS's (UGOS included) support Docker; keeps the app portable if you ever move hosts |
+| Remote access | Tailscale (or similar) | Lets your phone reach the NAS-hosted backend securely from outside your home network, without exposing a public port |
+
+## Data model (starting point)
+
+- **accounts** — id, name, institution, type (checking/credit/investment), current_balance, source (simplefin/manual)
+- **transactions** — id, account_id, date, amount, merchant_raw, category_id, notes, source, simplefin_id (for dedup)
+- **categories** — id, name, bucket (retirement / investment / college fund / emergency fund / other), parent_category_id
+- **budgets** — id, category_id, month, budgeted_amount
+- **categorization_rules** — id, merchant_pattern, category_id (learned overrides so you don't re-correct the same merchant repeatedly)
+
+This is intentionally minimal — the forecasting/scenario layer gets its own model once the core is working (see Phase 5).
+
+## Phased build order
+
+### Phase 1 — Core (no bank connection yet)
+- Set up the repo, Node/Express backend, SQLite schema above
+- Build a CSV/statement importer as your test data source (reuse the same statements you were uploading to ChatGPT) — this lets you build and validate categorization before wiring up live sync
+- Build the Claude API categorization pipeline: system prompt with your category list, batched transaction calls, confidence handling for ambiguous merchants
+- Build budget-vs-actual calculation logic (by category, by month)
+- Test entirely via API calls / a basic CLI or Postman — no UI needed yet
+
+**Done when:** you can drop a statement CSV in, get back categorized transactions, and see budget-vs-actual numbers for a month.
+
+### Phase 2 — Storing on the NAS
+- Containerize the backend (Dockerfile + docker-compose)
+- Set up a persistent volume on the NAS for the SQLite file
+- Install Tailscale on the NAS and your phone/laptop so the API is reachable securely from anywhere
+- Set up a backup routine for the DB file (NAS snapshot or a simple cron copy to another volume)
+
+**Done when:** the backend runs unattended on the NAS, survives a reboot, and you can hit it from your phone off your home network.
+
+### Phase 3 — Bank connection
+- Sign up for SimpleFIN Bridge, connect your accounts
+- Build a scheduled sync job (daily) that pulls transactions into the DB via the API
+- Add dedup logic (SimpleFIN transaction IDs) so re-syncs don't create duplicates
+- Route new transactions through the same categorization pipeline from Phase 1
+
+**Done when:** transactions show up automatically each day, categorized, with no manual CSV uploads.
+
+### Phase 4 — Design / mobile UI
+- Use Claude Design to mock up: dashboard (net worth + monthly summary), transaction list, category management, budget view with trend charts
+- `/design-sync` the result into Claude Code, or hand off screenshots/specs directly
+- Build the Expo screens against your existing API
+- Add simple auth (PIN or biometric — single-household app, doesn't need much)
+
+**Done when:** you're checking the app on your phone instead of the API directly.
+
+### Phase 5 — Forecasting (later, separate scoping pass)
+- This is the most involved piece — worth its own planning session once Phases 1–4 are solid
+- Start simple: linear multi-year projections based on current savings rate and a manually entered "big expense" scenario
+- Decide then whether to build real Monte Carlo-style modeling yourself or keep using ProjectionLab/Boldin's free tier for this specific piece and just link the output into your dashboard
+
+## Handing this to Claude Code
+
+Paste this brief into a `CLAUDE.md` at the root of your project, or just paste Phase 1 into your first Claude Code session and work through it phase by phase. Sonnet 5 at default effort is the right starting point for most of this (see model/effort notes from earlier) — reach for Opus 4.8 specifically when you hit the sync/dedup logic or anything genuinely ambiguous in the categorization design.

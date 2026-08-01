@@ -77,11 +77,16 @@ npm start
 ```
 Then: create an account (`POST /api/accounts`), import a CSV (`POST /api/import`), run categorization (`POST /api/categorize`), set a budget (`POST /api/budgets`), and check `GET /api/budgets/vs-actual?month=YYYY-MM`.
 
-### Phase 2 — Storing on the NAS
-- Containerize the backend (Dockerfile + docker-compose)
-- Set up a persistent volume on the NAS for the SQLite file
-- Install Tailscale on the NAS and your phone/laptop so the API is reachable securely from anywhere
-- Set up a backup routine for the DB file (NAS snapshot or a simple cron copy to another volume)
+### Phase 2 — Storing on the NAS — IN PROGRESS
+
+- [x] Containerize the backend (`Dockerfile`, `.dockerignore`, `docker-compose.yml`)
+- [x] Persistent volume set up in `docker-compose.yml` (`./data` → `/data`)
+- [x] Backup script (`scripts/backup-db.js`, `npm run backup`) — WAL-safe SQLite backup
+- [ ] Actually deploy on the UGREEN NAS (Container Manager, `.env`, `docker compose up -d --build`) — needs to happen on the NAS itself
+- [ ] Install Tailscale on the NAS and your phone/laptop
+- [ ] Schedule the daily backup via NAS Task Scheduler
+
+Full walkthrough: [docs/phase2-nas-deployment.md](docs/phase2-nas-deployment.md). The Docker build hasn't been tested locally (no Docker installed on the dev machine) — first real test happens on the NAS.
 
 **Done when:** the backend runs unattended on the NAS, survives a reboot, and you can hit it from your phone off your home network.
 

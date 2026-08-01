@@ -1,6 +1,5 @@
 node_modules/
-data/*.db
-data/*.db-journal
+data/
 .env
 *.log
 .claude/settings.local.json

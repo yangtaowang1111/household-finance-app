@@ -77,18 +77,18 @@ npm start
 ```
 Then: create an account (`POST /api/accounts`), import a CSV (`POST /api/import`), run categorization (`POST /api/categorize`), set a budget (`POST /api/budgets`), and check `GET /api/budgets/vs-actual?month=YYYY-MM`.
 
-### Phase 2 — Storing on the NAS — IN PROGRESS
+### Phase 2 — Storing on the NAS — DONE
 
 - [x] Containerize the backend (`Dockerfile`, `.dockerignore`, `docker-compose.yml`)
 - [x] Persistent volume set up in `docker-compose.yml` (`./data` → `/data`)
 - [x] Backup script (`scripts/backup-db.js`, `npm run backup`) — WAL-safe SQLite backup
-- [ ] Actually deploy on the UGREEN NAS (Container Manager, `.env`, `docker compose up -d --build`) — needs to happen on the NAS itself
-- [ ] Install Tailscale on the NAS and your phone/laptop
-- [ ] Schedule the daily backup via NAS Task Scheduler
+- [x] Deployed on the UGREEN DXP4800 at `/volume1/docker/household-finance-app` via `docker compose up -d --build`
+- [x] Tailscale running as its own container (`tailscale/tailscale`, host networking) — NAS reachable at `100.99.152.23:3000`
+- [x] Daily backup scheduled via root's crontab (3am, `docker exec household-finance-app node scripts/backup-db.js /data/backups`)
 
-Full walkthrough: [docs/phase2-nas-deployment.md](docs/phase2-nas-deployment.md). The Docker build hasn't been tested locally (no Docker installed on the dev machine) — first real test happens on the NAS.
+Full walkthrough: [docs/phase2-nas-deployment.md](docs/phase2-nas-deployment.md) (note: actual deploy used a `curl`+`tar` download from the public GitHub repo instead of `git clone`, since the NAS has no `git`; UGOS has no Task Scheduler GUI we could find, so cron is used directly instead).
 
-**Done when:** the backend runs unattended on the NAS, survives a reboot, and you can hit it from your phone off your home network.
+**Done:** the backend runs unattended on the NAS (`restart: unless-stopped`), and `/health` was confirmed reachable from a phone over cellular data via Tailscale (no public port opened).
 
 ### Phase 3 — Bank connection
 - Sign up for SimpleFIN Bridge, connect your accounts

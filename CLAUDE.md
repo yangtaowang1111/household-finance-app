@@ -90,13 +90,17 @@ Full walkthrough: [docs/phase2-nas-deployment.md](docs/phase2-nas-deployment.md)
 
 **Done:** the backend runs unattended on the NAS (`restart: unless-stopped`), and `/health` was confirmed reachable from a phone over cellular data via Tailscale (no public port opened).
 
-### Phase 3 — Bank connection
-- Sign up for SimpleFIN Bridge, connect your accounts
-- Build a scheduled sync job (daily) that pulls transactions into the DB via the API
-- Add dedup logic (SimpleFIN transaction IDs) so re-syncs don't create duplicates
-- Route new transactions through the same categorization pipeline from Phase 1
+### Phase 3 — Bank connection — NEXT UP
+
+- [ ] **Blocked on you:** sign up for SimpleFIN Bridge ([bridge.simplefin.org](https://bridge.simplefin.org), ~$1.50/mo), connect your accounts, and redeem the one-time setup token for a permanent access URL
+- [ ] Store the access URL as `SIMPLEFIN_ACCESS_URL` in `.env` (never commit it)
+- [ ] Build the sync service — pull accounts + transactions, map into the existing schema
+- [ ] Dedup on `transactions.simplefin_id` (column + UNIQUE constraint already exist)
+- [ ] Schedule a daily sync, routing new transactions through the Phase 1 categorization pipeline
 
 **Done when:** transactions show up automatically each day, categorized, with no manual CSV uploads.
+
+Session context, environment quirks, and decisions so far: [docs/project-status.md](docs/project-status.md).
 
 ### Phase 4 — Design / mobile UI
 - Use Claude Design to mock up: dashboard (net worth + monthly summary), transaction list, category management, budget view with trend charts

@@ -167,21 +167,64 @@ Worth knowing what's actually been exercised vs. merely written:
 - **Not yet exercised:** the Claude API categorization path, and therefore the
   auto rule-learning logic that hangs off it
 
-## Next steps (Phase 3)
+## Next steps (Phase 3, part 2)
 
-1. **You:** sign up for SimpleFIN Bridge at
-   [bridge.simplefin.org](https://bridge.simplefin.org) (~$1.50/mo), connect
-   your accounts, and redeem the one-time setup token for a permanent access
-   URL. This involves bank credentials and payment, so it has to be done by
-   you directly.
-2. Store that access URL in `.env` (e.g. `SIMPLEFIN_ACCESS_URL=`) — never
-   commit it.
-3. Build the sync service: pull accounts + transactions from SimpleFIN, map
-   them into the existing schema, dedup on `transactions.simplefin_id` (the
-   column and its UNIQUE constraint already exist).
-4. Schedule a daily sync, then route new transactions through the existing
-   categorization pipeline.
+SimpleFIN signup, token redemption, and **account** sync are all DONE (see
+the Phase 3 part 1 entry above). What remains:
+
+1. **Transaction sync + dedup** — the main piece. Pull transactions per
+   account, map into `transactions`, dedup on `transactions.simplefin_id`
+   (column + UNIQUE constraint already exist). Design questions that still
+   need answering, since the account-level probe didn't cover them:
+   - How does a `pending` transaction differ from a posted one, and does its
+     `id` or `amount` change when it settles? Probe real transaction data
+     before writing the dedup logic, the same way the account probe was done.
+   - What happens when a manually-entered transaction (no `simplefin_id`)
+     later arrives for real from SimpleFIN? Same date/amount/account is a
+     likely-duplicate signal, but there is no id to match on.
+2. **Schedule a daily sync.** The NAS already uses root's crontab for the 3am
+   backup; following that pattern is likely simpler than an in-process
+   scheduler. Budget is 24 SimpleFIN requests/day, so retries need bounding.
+3. **Route newly-synced transactions through the categorizer.** Needs
+   `ANTHROPIC_API_KEY` set (still blank — see Deliberately deferred).
+4. **Decide the categorizer's `effort` level** — `src/services/categorizer.js`
+   currently sets none, so it runs at the API default.
 
 The brief flags sync/dedup as the point to use a stronger model — it's the
 first piece where getting it wrong creates messy data that's annoying to
-unwind.
+unwind. Agreed approach: Opus 5 at `xhigh` effort, then a `/code-review` pass
+over the dedup logic specifically.
+
+## Blockers to clear before end-to-end testing
+
+- **`API_KEY` is not set in the local `.env`** (only documented in
+  `.env.example`). The auth middleware fails closed, so **every `/api/*`
+  route currently returns 503** until a value is set. Generate one with
+  `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
+  Sync work so far has run through Node directly, which is why this hasn't
+  bitten yet.
+- **`SIMPLEFIN_ACCESS_URL` is only in the local `.env`, not the NAS one.**
+  Needed before Phase 3 deploys. Add it directly on the NAS rather than
+  pasting it through a chat session.
+- **Property values are not recorded anywhere**, so net worth reads
+  −$392,507. Manual asset entries for the two homes are needed before the net
+  worth dashboard means anything.
+
+## Why SimpleFIN (and what the fallback is)
+
+Evaluated against Plaid, MX, Akoya, and Teller in Aug 2026. SimpleFIN won on
+being the only aggregator actually priced and licensed for personal use
+($15/yr, no business agreement); the others are built for companies and need
+sales contracts or production-approval processes. Its read-only design is the
+main safety property — no API path exists to move money — and bank
+credentials live with MX, never on SimpleFIN's own servers.
+
+Known risk, accepted: MX had a bug on 2026-05-28 that let up to 39 users see
+each other's transaction/balance data for ~4 hours. No credentials exposed,
+disclosed promptly. MX is part of the trust boundary, not just SimpleFIN.
+
+**Fallback if SimpleFIN ever drops one of these banks:** Teller.io — indie
+friendly, 100 free connections. Caveat: some of its connectivity is
+reverse-engineered rather than agreement-based, which is a durability risk
+SimpleFIN doesn't carry. If this app ever becomes a real product, none of
+these personal-use terms apply and it'd need Plaid/MX/Akoya properly.

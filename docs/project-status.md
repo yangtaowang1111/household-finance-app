@@ -210,6 +210,20 @@ over the dedup logic specifically.
   −$392,507. Manual asset entries for the two homes are needed before the net
   worth dashboard means anything.
 
+## Known gap: no local nickname for an account
+
+`syncAccounts()` refreshes `accounts.name` from SimpleFIN on every run, so a
+locally-renamed account gets clobbered on the next sync. This matters because
+the three Ally accounts are all literally named "Savings Account", separated
+only by `(8794)` / `(8802)` / `(8810)` — nothing in the synced data says which
+one is the emergency fund, and the four-bucket framework in the brief has an
+`emergency_fund` bucket that wants exactly that mapping.
+
+Fix when convenient: add an `accounts.nickname` column that sync never
+touches, and have the UI prefer it over `name`. Same treatment `type_confirmed`
+already gets — human input outranks synced values. Small, but do it before
+building any UI, or three identical "Savings Account" rows will be unusable.
+
 ## Why SimpleFIN (and what the fallback is)
 
 Evaluated against Plaid, MX, Akoya, and Teller in Aug 2026. SimpleFIN won on

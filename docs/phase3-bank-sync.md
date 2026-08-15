@@ -43,6 +43,69 @@ Over HTTP (every `/api/*` route needs the `x-api-key` header):
 Body options for the `POST`s: `{"days": 30, "include_pending": false,
 "confirm_inferred_types": false}`.
 
+## Deploying this to the NAS
+
+The first Phase 3 deploy is the one that carries schema migrations, so it needs
+a little more care than the usual re-run of the `curl`/`tar` steps.
+
+SSH auto-disables on this UGOS box, so it likely needs re-enabling in Control
+Panel first (`ssh: connect to ... port 22: Connection refused` is the symptom).
+
+```bash
+ssh ywang1111@192.168.50.107
+cd /volume1/docker/household-finance-app
+
+# 1. Back up first — this deploy rebuilds two tables.
+sudo docker exec household-finance-app node scripts/backup-db.js /data/backups
+
+# 2. Add the Phase 3 settings. Type the access URL here rather than pasting it
+#    through a chat session; it is a credential.
+nano .env
+#      SIMPLEFIN_ACCESS_URL=<permanent access URL>
+#      TIMEZONE=America/Denver
+#      ANTHROPIC_API_KEY=<key>        # optional, enables categorization
+
+# 3. Pull the new code. `.env` and `data/` are gitignored, so the tarball
+#    cannot overwrite either.
+curl -L https://github.com/yangtaowang1111/household-finance-app/archive/refs/heads/master.tar.gz -o app.tar.gz
+tar -xzf app.tar.gz --strip-components=1
+rm app.tar.gz
+
+# 4. Rebuild.
+sudo docker compose up -d --build
+```
+
+**Then check the migrations actually ran** — this is the step that confirms the
+deploy worked, because the schema changes are what the old database is missing:
+
+```bash
+sudo docker logs household-finance-app --tail 30
+```
+
+Expect three lines on this first Phase 3 boot:
+
+```
+Applied migration 1: transaction-sync-fields (payee, pending, posted_at, possible_duplicate_of)
+Applied migration 2: possible-duplicate-on-delete-set-null (rebuilt transactions with ON DELETE SET NULL)
+Applied migration 3: accounts-simplefin-fields (simplefin_id, currency, type_confirmed, rebuilt accounts ...)
+```
+
+If instead the container is restart-looping with `SqliteError: no such column`,
+the migrations did not run — restore the backup from step 1 rather than letting
+it keep cycling.
+
+Then confirm it's serving and do the first real sync by hand, before trusting
+it to cron:
+
+```bash
+curl -s http://localhost:3000/health
+sudo docker exec household-finance-app node scripts/daily-sync.js
+```
+
+The first sync on the NAS creates every account and backfills 30 days of
+transactions, so expect non-zero `created` counts. Run it a second time — the
+counts should go to `0 created, 0 updated`.
+
 ## Scheduling it on the NAS
 
 Same pattern as the 3am backup ([phase2-nas-deployment.md](phase2-nas-deployment.md#6-backups)) —

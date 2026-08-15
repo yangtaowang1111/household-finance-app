@@ -309,7 +309,10 @@ remains is getting it running unattended:
    backup. Exact line in [phase3-bank-sync.md](phase3-bank-sync.md).
 4. **Set `ANTHROPIC_API_KEY`** so the sync's categorization step actually
    runs; it currently warns and leaves rows uncategorized. This is also what
-   unblocks testing the rule-learning path, still never exercised.
+   unblocks the AI half of categorization, still never exercised against the
+   live API. The 120 already-synced transactions will be categorized on the
+   first run that has a key (the daily job now categorizes whatever is
+   uncategorized, not only what it just imported).
 5. **Decide the categorizer's `effort` level** — `src/services/categorizer.js`
    still sets none, so it runs at the API default.
 
@@ -319,11 +322,16 @@ Two things the real data surfaced that aren't bugs but will matter soon:
   checking, positive on the card. Both are real; categorizing both as spending
   inflates totals. The seeded `Transfers` category exists but nothing routes to
   it. Worth solving before budget numbers are trusted.
-- **Rule learning generalizes poorly on raw descriptors.**
-  `categorizer.js` writes `merchant_raw` as the rule pattern, which embeds
-  store numbers ("CHICK-FIL-A #02479", "McDonalds 21389"). The new `payee`
-  column ("Chick-fil-A") is the better pattern source — a small change to make
-  before a real categorization run populates the rules table with junk.
+- ~~**Rule learning generalizes poorly on raw descriptors.**~~ **Fixed
+  2026-08-15**, before the first real categorization run, while
+  `categorization_rules` was still empty (so no rules needed rewriting).
+  `categorizer.js` learned patterns from `merchant_raw`, which embeds store
+  numbers ("CHICK-FIL-A #02479"), so every branch of a chain cost another API
+  call. Rules are now learned from `payee` when present, matched against
+  *both* payee and descriptor (a rule learned from one field must still match
+  a transaction carrying the other), and both are sent to the model. Covered by
+  `tests/categorizer.test.js` — the rule path needs no API key, so it is
+  testable for real; the AI path still isn't.
 
 ## Blockers to clear before end-to-end testing
 

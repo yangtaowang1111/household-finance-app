@@ -21,10 +21,32 @@ Rules:
 [{"id": <transaction id>, "category_name": "<exact category name>", "confidence": "high"|"medium"|"low"}]`;
 }
 
-function findRuleMatch(rules, merchant) {
-  if (!merchant) return null;
-  const lower = merchant.toLowerCase();
-  return rules.find((r) => lower.includes(r.merchant_pattern.toLowerCase())) || null;
+// Matched against both the cleaned payee and the raw bank descriptor. A rule
+// learned as "McDonald's" isn't a substring of "McDonalds 21389" (apostrophe),
+// and one learned from a descriptor isn't a substring of the payee — checking
+// both means a rule keeps matching whichever field a later transaction carries.
+function findRuleMatch(rules, txn) {
+  const haystacks = [txn.payee, txn.merchant_raw]
+    .filter(Boolean)
+    .map((value) => value.toLowerCase());
+  if (haystacks.length === 0) return null;
+
+  return (
+    rules.find((rule) => {
+      const pattern = rule.merchant_pattern.toLowerCase();
+      return haystacks.some((haystack) => haystack.includes(pattern));
+    }) || null
+  );
+}
+
+// SimpleFIN's `payee` is a cleaned merchant name ("Chick-fil-A") next to a raw
+// descriptor carrying store numbers and terminal prefixes ("CHICK-FIL-A #02479",
+// "TST*THE LITTLE DINER"). Learning a rule from the descriptor produces a
+// pattern that only ever matches that one store, so every branch of the same
+// chain costs another API call. Prefer the payee; fall back to the descriptor
+// for CSV and manual rows, which have no payee.
+function rulePatternFor(txn) {
+  return (txn && (txn.payee || txn.merchant_raw)) || null;
 }
 
 function chunk(array, size) {
@@ -35,7 +57,15 @@ function chunk(array, size) {
 
 async function categorizeBatch(transactions, categories, systemPrompt) {
   const userContent = JSON.stringify(
-    transactions.map((t) => ({ id: t.id, merchant: t.merchant_raw, amount: t.amount }))
+    transactions.map((t) => ({
+      id: t.id,
+      // Both, when available: the payee is easier to recognise, the raw
+      // descriptor sometimes carries the only useful signal (a "TST*" prefix
+      // marks a restaurant POS, "PPD ID" an ACH debit).
+      merchant: t.payee || t.merchant_raw,
+      descriptor: t.merchant_raw,
+      amount: t.amount,
+    }))
   );
 
   const response = await client.messages.create({
@@ -81,7 +111,7 @@ async function categorizeUncategorized(limit = DEFAULT_LIMIT) {
     FROM categorization_rules cr JOIN categories c ON c.id = cr.category_id
   `).all();
   const uncategorized = db.prepare(`
-    SELECT id, merchant_raw, amount FROM transactions
+    SELECT id, merchant_raw, payee, amount FROM transactions
     WHERE category_id IS NULL
     LIMIT ?
   `).all(cappedLimit);
@@ -101,7 +131,7 @@ async function categorizeUncategorized(limit = DEFAULT_LIMIT) {
   const remaining = [];
   let ruleMatched = 0;
   for (const txn of uncategorized) {
-    const rule = findRuleMatch(rules, txn.merchant_raw);
+    const rule = findRuleMatch(rules, txn);
     if (rule) {
       updateCategory.run(rule.category_id, txn.id);
       ruleMatched += 1;
@@ -116,7 +146,7 @@ async function categorizeUncategorized(limit = DEFAULT_LIMIT) {
   let rulesLearned = 0;
 
   for (const batch of chunk(remaining, BATCH_SIZE)) {
-    const merchantById = new Map(batch.map((t) => [t.id, t.merchant_raw]));
+    const txnById = new Map(batch.map((t) => [t.id, t]));
     const results = await categorizeBatch(batch, categories, systemPrompt);
     for (const result of results) {
       if (!result.category) continue;
@@ -127,9 +157,9 @@ async function categorizeUncategorized(limit = DEFAULT_LIMIT) {
         updateCategory.run(result.category.id, result.id);
 
         // Learn a rule so the next transaction from this merchant skips the API call.
-        const merchant = merchantById.get(result.id);
-        if (merchant && result.category.name !== 'Uncategorized') {
-          upsertRule.run(merchant, result.category.id);
+        const pattern = rulePatternFor(txnById.get(result.id));
+        if (pattern && result.category.name !== 'Uncategorized') {
+          upsertRule.run(pattern, result.category.id);
           rulesLearned += 1;
         }
       }
@@ -140,4 +170,4 @@ async function categorizeUncategorized(limit = DEFAULT_LIMIT) {
   return { ruleMatched, aiCategorized, needsReview, rulesLearned };
 }
 
-module.exports = { categorizeUncategorized };
+module.exports = { categorizeUncategorized, findRuleMatch, rulePatternFor };

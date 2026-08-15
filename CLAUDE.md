@@ -49,13 +49,15 @@ Mapped from Monarch Core's feature set, tuned to what actually matters for this 
 
 ## Data model
 
-- **accounts** — id, name, institution, type (checking/credit/investment), current_balance, source (simplefin/manual)
-- **transactions** — id, account_id, date, amount, merchant_raw, category_id, notes, source, simplefin_id (for dedup)
+- **accounts** — id, name, institution, type (checking/savings/credit/investment/mortgage/loan), current_balance, currency, source (simplefin/manual), simplefin_id, type_confirmed
+- **transactions** — id, account_id, date, amount, merchant_raw, payee, category_id, notes, source, simplefin_id (for dedup), pending, posted_at, possible_duplicate_of
 - **categories** — id, name, bucket (retirement / investment / college fund / emergency fund / other), parent_category_id
 - **budgets** — id, category_id, month, budgeted_amount
 - **categorization_rules** — id, merchant_pattern, category_id (learned overrides so you don't re-correct the same merchant repeatedly)
+- **account_balance_snapshots** — id, account_id, balance, recorded_at (net worth over time; `accounts.current_balance` alone has no history)
+- **sync_runs** — id, kind, status, window, per-run counts, errors (audit trail for an unattended job)
 
-Implemented in [src/db/schema.sql](src/db/schema.sql). This is intentionally minimal — the forecasting/scenario layer gets its own model once the core is working (see Phase 5).
+Implemented in [src/db/schema.sql](src/db/schema.sql), with [src/db/migrate.js](src/db/migrate.js) handling databases that already exist. This is intentionally minimal — the forecasting/scenario layer gets its own model once the core is working (see Phase 5).
 
 ## Phased build order
 
@@ -90,15 +92,24 @@ Full walkthrough: [docs/phase2-nas-deployment.md](docs/phase2-nas-deployment.md)
 
 **Done:** the backend runs unattended on the NAS (`restart: unless-stopped`), and `/health` was confirmed reachable from a phone over cellular data via Tailscale (no public port opened).
 
-### Phase 3 — Bank connection — NEXT UP
+### Phase 3 — Bank connection — IN PROGRESS
 
-- [ ] **Blocked on you:** sign up for SimpleFIN Bridge ([bridge.simplefin.org](https://bridge.simplefin.org), ~$1.50/mo), connect your accounts, and redeem the one-time setup token for a permanent access URL
-- [ ] Store the access URL as `SIMPLEFIN_ACCESS_URL` in `.env` (never commit it)
-- [ ] Build the sync service — pull accounts + transactions, map into the existing schema
-- [ ] Dedup on `transactions.simplefin_id` (column + UNIQUE constraint already exist)
-- [ ] Schedule a daily sync, routing new transactions through the Phase 1 categorization pipeline
+- [x] Sign up for SimpleFIN Bridge ([bridge.simplefin.org](https://bridge.simplefin.org), ~$1.50/mo), connect accounts, redeem the setup token
+- [x] Store the access URL as `SIMPLEFIN_ACCESS_URL` in `.env` (never commit it) — local only so far
+- [x] Account sync (`src/services/accountSync.js`, `src/services/accountMapper.js`) — 13 accounts
+- [x] Transaction sync (`src/services/transactionSync.js`, `src/services/transactionMapper.js`, `POST /api/sync`) — 120 transactions, one API request refreshes balances and transactions together
+- [x] Dedup on `(account_id, simplefin_id)`, with date-bounded content matching only where no id exists to match on — pending settlement and manual/CSV duplicates, both of which flag rather than delete
+- [x] Schema migrations (`src/db/migrate.js`) so schema changes can reach the NAS's live database
+- [x] Tests (`npm test`) covering the dedup branches
+- [x] `/code-review` pass over the dedup logic — 9 findings, all fixed
+- [x] `/code-review ultra` pass — 10 more findings, all fixed (including a migration gap that would have crash-looped the NAS container)
+- [ ] Deploy to the NAS: `SIMPLEFIN_ACCESS_URL` + `TIMEZONE` in its `.env`, rebuild, run the migration
+- [ ] Schedule the daily sync (4am, root's crontab — see [docs/phase3-bank-sync.md](docs/phase3-bank-sync.md))
+- [ ] Set `ANTHROPIC_API_KEY` so newly synced transactions actually get categorized
 
 **Done when:** transactions show up automatically each day, categorized, with no manual CSV uploads.
+
+Running and reviewing the sync: [docs/phase3-bank-sync.md](docs/phase3-bank-sync.md).
 
 Session context, environment quirks, and decisions so far: [docs/project-status.md](docs/project-status.md).
 

@@ -69,7 +69,12 @@ async function categorizeBatch(transactions, categories, systemPrompt) {
  * merchant skips the API on future runs.
  */
 async function categorizeUncategorized(limit = DEFAULT_LIMIT) {
-  const cappedLimit = Math.min(Number(limit) || DEFAULT_LIMIT, MAX_LIMIT);
+  // Clamped at both ends. A negative limit is truthy, so it would slip past the
+  // `|| DEFAULT_LIMIT` fallback and past Math.min — and SQLite reads a negative
+  // LIMIT as unbounded, sending the entire backlog to the Claude API in
+  // 25-row batches. That is the exact cost exposure MAX_LIMIT exists to stop.
+  const requested = Number(limit) > 0 ? Number(limit) : DEFAULT_LIMIT;
+  const cappedLimit = Math.max(1, Math.min(requested, MAX_LIMIT));
   const categories = db.prepare('SELECT id, name, bucket FROM categories').all();
   const rules = db.prepare(`
     SELECT cr.merchant_pattern, c.id AS category_id, c.name

@@ -7,6 +7,10 @@
 
 const ACCESS_URL_ENV = 'SIMPLEFIN_ACCESS_URL';
 
+// Generous, because SimpleFIN fans out to several banks behind one request and
+// a 13-account pull genuinely takes a few seconds.
+const REQUEST_TIMEOUT_MS = 60_000;
+
 function parseAccessUrl(accessUrl) {
   const parsed = new URL(accessUrl);
   const username = decodeURIComponent(parsed.username);
@@ -42,7 +46,15 @@ async function fetchAccounts(options = {}) {
   }
   if (options.pending) url.searchParams.set('pending', '1');
 
-  const response = await fetch(url, { headers: { Authorization: authHeader } });
+  // Node's fetch has no default timeout, and this runs unattended from cron. A
+  // stalled request would otherwise hang forever without writing a sync_runs
+  // row — indistinguishable from cron never firing — while the next night's job
+  // starts a second run against the same database. The timeout turns a hang
+  // into an ordinary failure the caller already knows how to record.
+  const response = await fetch(url, {
+    headers: { Authorization: authHeader },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
 
   if (!response.ok) {
     // Deliberately does not include the URL — it would leak the credential.

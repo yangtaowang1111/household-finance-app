@@ -8,7 +8,9 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "db:init": "node src/db/seed.js",
-    "backup": "node scripts/backup-db.js"
+    "backup": "node scripts/backup-db.js",
+    "sync": "node scripts/daily-sync.js",
+    "test": "node --test \"tests/*.test.js\""
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.0",

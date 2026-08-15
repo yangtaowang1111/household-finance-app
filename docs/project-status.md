@@ -1,6 +1,6 @@
 # Project Status & Session Handoff
 
-Last updated: 2026-08-12 (end of Phase 2)
+Last updated: 2026-08-15 (Phase 3 transaction sync built)
 
 This file captures context that isn't obvious from the code or git history —
 decisions we made, things we deliberately deferred, and environment quirks
@@ -12,7 +12,7 @@ that cost time to discover. Read this alongside [CLAUDE.md](../CLAUDE.md).
 |---|---|
 | Phase 1 — Core backend | Built and tested end-to-end, except live AI categorization (no API key yet) |
 | Phase 2 — NAS deployment | Done and verified — running unattended on the DXP4800 |
-| Phase 3 — Bank connection | Not started; blocked on SimpleFIN signup |
+| Phase 3 — Bank connection | Account + transaction sync built and verified against real data; not yet deployed to the NAS or scheduled |
 | Phase 4 — Mobile UI | Not started |
 | Phase 5 — Forecasting | Deferred by design |
 
@@ -123,6 +123,131 @@ knows about accounts, not real estate. A meaningful net worth needs manual
 asset entries for the two properties' values. Worth doing before the net
 worth dashboard is built, or the headline number will be alarming and wrong.
 
+**Phase 3, part 2 — transaction sync + dedup is built and verified
+(2026-08-15).** 120 real transactions across 9 accounts imported; the
+immediate re-sync created 0 and updated 0. Operational guide:
+[phase3-bank-sync.md](phase3-bank-sync.md).
+
+What the real transaction data settled (probed the same way the accounts were,
+222 transactions over 45 days):
+
+- **Pending charges carry `posted: 0`** and an id shaped exactly like a
+  settled one (`TRN-<uuid>`), so a single snapshot *cannot* reveal whether an
+  id survives settlement — and the protocol spec doesn't say either.
+  `transactionSync.js` therefore handles both outcomes: a stable id updates in
+  place, a changed id is matched to its pending twin by merchant + date window
+  and supersedes it, carrying over any category assigned while it was pending.
+- **Pending is off by default anyway**, which is the bigger decision. A
+  pending amount *changes* when it settles (tips, fuel pre-auths), so
+  including them makes budget-vs-actual wobble day to day. `--include-pending`
+  turns them on; reconciliation only runs on a sync that asked for pending.
+- **Content-based dedup would have destroyed real data.** In 45 days, 19
+  distinct (account, amount, description) triples recurred — the same $8.62
+  McDonald's, the same $11.45 In-N-Out, weeks apart. Add the date and the
+  collisions go to zero. So id is the only dedup key, and every content match
+  in the code is date-bounded and flags rather than deletes.
+- **`amount` is a string, negative for money out** — matches the account
+  balance convention, and `budgetCalc` already negates sums, so nothing needed
+  changing there.
+- **`transacted_at` is on every row; `posted` lags it by up to 4 days** (and
+  occasionally *precedes* it). `date` is set from `transacted_at` — when the
+  money was spent is what belongs in a monthly budget — with `posted_at` kept
+  separately. 3 of 222 rows would have landed in a different month otherwise.
+- **Timestamps are moments, not dates.** Zero of 222 sat on a UTC midnight,
+  and ~4% land on a different calendar day under UTC than under Denver time.
+  Hence the new `TIMEZONE` env var; the NAS container's system zone is UTC, so
+  it must be set there explicitly.
+- **`payee` is a cleaned merchant name** next to the raw descriptor
+  ("TST\*THE LITTLE DINER" → "The Little Diner"), and generalizes better: 126
+  distinct payees vs 147 descriptions. Stored in a new `transactions.payee`.
+- **`errors[]` carries advisories, not just failures** — a 45-day request came
+  back 200 with "Requested date range exceeds recommended range of 45 days".
+  The window is capped at 44 for that reason.
+- `memo` and `mcc` are present but empty/null on all 222 rows, so neither is
+  stored yet. `mcc` would be a genuinely good categorization signal if it ever
+  starts arriving.
+
+**A real migration path now exists** (`src/db/migrate.js`, `PRAGMA
+user_version`), which was the open flag from part 1. Migrations run *before*
+`schema.sql` and are written to be idempotent — they check what's actually in
+the database — so a fresh DB and the NAS's existing one converge on the same
+shape. Verified in both directions, including that the 13 existing accounts
+survived. **The NAS database has not been migrated yet** — that happens on the
+next deploy, and its 3am backup runs first.
+
+**A `/code-review` pass ran over this diff and found 9 issues; all are fixed**
+(2026-08-15), each with a regression test where testable. The ones worth
+remembering:
+
+- An account with **no transactions in the window** returned early, before
+  pending reconciliation — so a cancelled authorization would have stayed
+  `pending = 1` forever, and silently. Empty accounts are exactly the shape a
+  cancelled auth produces, so that early exit is gone.
+- `possible_duplicate_of` was declared `REFERENCES transactions(id)` with no
+  `ON DELETE` clause, which defaults to `NO ACTION`. Deleting the hand-entered
+  twin — *the* documented way to resolve the flag — failed on a foreign key
+  constraint. Fixed to `ON DELETE SET NULL`, which needed migration 2 to
+  rebuild the table (SQLite can't alter a constraint in place). That migration
+  is the first real exercise of the migration path, and it preserved all 120
+  rows and three indexes.
+- `syncTransactions` (`skipAccounts`) could drop **every** transaction of a
+  newly linked account into `unknownAccounts` and still record `success`.
+  Unknown accounts now force `partial` and land in `errors`.
+- Categorization was gated on `created > 0` while the categorizer caps at 200
+  rows per run, so a 222-row import would strand 22 rows that no quiet night
+  would ever pick up. Gated on what's actually uncategorized instead.
+- Smaller: a failed database write left no `sync_runs` row at all; two
+  same-amount charges could both flag the same manual row; `?limit=-1` on
+  `/api/sync/runs` returned the whole table (SQLite reads a negative LIMIT as
+  unbounded); and `sync_runs` window dates were UTC while transaction dates
+  are local.
+
+**A second, deeper `/code-review ultra` pass then found 10 more; all fixed**
+(2026-08-15). One was a genuine deploy blocker:
+
+- **The NAS deploy would have crash-looped.** Phase 3 part 1 added
+  `simplefin_id`, `currency` and `type_confirmed` to `accounts` and widened the
+  `type` CHECK — but only in `schema.sql`, which can't alter an existing table.
+  The dev DB was recreated at the time so it never showed; the NAS DB still has
+  the Phase 2 shape. `accountSync.js` prepares `SELECT ... WHERE simplefin_id = ?`
+  at *module load*, so the container would throw `no such column: simplefin_id`
+  before binding a port, and `restart: unless-stopped` would loop it. Migration 1
+  and 2 covered `transactions` only — the accounts half was missed. **Migration 3**
+  fixes it, and the whole thing was reproduced against a database built from the
+  actual Phase 2 schema (`git show 5428945:src/db/schema.sql`) and re-verified:
+  server boots, `/health` responds, rows and foreign keys intact.
+- `confirm_inferred_types` was silently discarded on existing accounts — the
+  UPDATE statement never included `type_confirmed`, so the documented option was
+  a no-op on exactly the re-sync where it's meant to be used, and the same
+  response still reported the account as needing review.
+- `reconcilePending` had two gaps: one settled row could be claimed by two
+  different pending charges (silently deleting a cancelled authorization rather
+  than reporting it), and a pending row whose twin arrived on an *earlier* run
+  could never reconcile, contradicting what phase3-bank-sync.md promises about
+  toggling pending off and on.
+- One malformed account aborted the entire night — `remote.map(mapAccount)` was
+  eager, so a single unparseable balance rolled back all 13 accounts *and* every
+  transaction. The transaction path already had per-row tolerance; accounts now
+  match it.
+- No `DELETE /api/transactions/:id` existed, even though migration 2's whole
+  purpose was making that deletion work and the docs instruct users to do it.
+- `syncAccounts` wrote no `sync_runs` row despite the schema reserving
+  `kind='accounts'`; SimpleFIN fetches had no timeout, so a hang would leave no
+  audit row at all while the next night's cron started a second run;
+  `categorizeUncategorized(-1)` bypassed the `MAX_LIMIT` cost cap the same way
+  `?limit=-1` did; and `started_at`/`finished_at` were written in two different
+  timestamp formats that compare wrong against each other.
+
+`recordRun` moved to `src/services/syncRuns.js` so both sync paths can use it
+without a require cycle.
+
+**Tests exist now** (`npm test`, `tests/transactionSync.test.js`, 23 cases, no
+dependencies beyond `node --test`). They cover every branch that inserts,
+updates, deletes, or flags: re-sync idempotency, category/notes surviving a
+re-sync, both pending-settlement paths, ambiguous matches being left alone,
+manual/CSV duplicate flagging, and a malformed row not killing the run. This
+is the first test coverage in the repo.
+
 **Deferred from the same review, to revisit once SimpleFIN access is set up
 and Phase 3 work begins:**
 - No `users` table or per-user attribution — "joint access for you and your
@@ -167,33 +292,38 @@ Worth knowing what's actually been exercised vs. merely written:
 - **Not yet exercised:** the Claude API categorization path, and therefore the
   auto rule-learning logic that hangs off it
 
-## Next steps (Phase 3, part 2)
+## Next steps (Phase 3, part 3 — deployment)
 
-SimpleFIN signup, token redemption, and **account** sync are all DONE (see
-the Phase 3 part 1 entry above). What remains:
+Sync and dedup are built, tested, and verified against real data. Both design
+questions that were open here are answered in the part 2 entry above. What
+remains is getting it running unattended:
 
-1. **Transaction sync + dedup** — the main piece. Pull transactions per
-   account, map into `transactions`, dedup on `transactions.simplefin_id`
-   (column + UNIQUE constraint already exist). Design questions that still
-   need answering, since the account-level probe didn't cover them:
-   - How does a `pending` transaction differ from a posted one, and does its
-     `id` or `amount` change when it settles? Probe real transaction data
-     before writing the dedup logic, the same way the account probe was done.
-   - What happens when a manually-entered transaction (no `simplefin_id`)
-     later arrives for real from SimpleFIN? Same date/amount/account is a
-     likely-duplicate signal, but there is no id to match on.
-2. **Schedule a daily sync.** The NAS already uses root's crontab for the 3am
-   backup; following that pattern is likely simpler than an in-process
-   scheduler. Budget is 24 SimpleFIN requests/day, so retries need bounding.
-3. **Route newly-synced transactions through the categorizer.** Needs
-   `ANTHROPIC_API_KEY` set (still blank — see Deliberately deferred).
-4. **Decide the categorizer's `effort` level** — `src/services/categorizer.js`
-   currently sets none, so it runs at the API default.
+1. **Deploy to the NAS.** Add `SIMPLEFIN_ACCESS_URL` and `TIMEZONE` to the NAS
+   `.env` directly on the box, rebuild, and let the migrations run (the 3am
+   backup goes first). The NAS DB is still at `user_version = 0` and will apply
+   migrations 1–3 in sequence on first boot. Watch the container logs on that
+   first start — the three `Applied migration N` lines are the confirmation that
+   it worked, and their absence means the DB was already migrated or the boot
+   failed. Both code reviews are done (9 + 10 findings, all fixed).
+3. **Schedule the daily sync** — 4am in root's crontab, an hour after the
+   backup. Exact line in [phase3-bank-sync.md](phase3-bank-sync.md).
+4. **Set `ANTHROPIC_API_KEY`** so the sync's categorization step actually
+   runs; it currently warns and leaves rows uncategorized. This is also what
+   unblocks testing the rule-learning path, still never exercised.
+5. **Decide the categorizer's `effort` level** — `src/services/categorizer.js`
+   still sets none, so it runs at the API default.
 
-The brief flags sync/dedup as the point to use a stronger model — it's the
-first piece where getting it wrong creates messy data that's annoying to
-unwind. Agreed approach: Opus 5 at `xhigh` effort, then a `/code-review` pass
-over the dedup logic specifically.
+Two things the real data surfaced that aren't bugs but will matter soon:
+
+- **Transfers double count.** A credit card autopay lands twice — negative on
+  checking, positive on the card. Both are real; categorizing both as spending
+  inflates totals. The seeded `Transfers` category exists but nothing routes to
+  it. Worth solving before budget numbers are trusted.
+- **Rule learning generalizes poorly on raw descriptors.**
+  `categorizer.js` writes `merchant_raw` as the rule pattern, which embeds
+  store numbers ("CHICK-FIL-A #02479", "McDonalds 21389"). The new `payee`
+  column ("Chick-fil-A") is the better pattern source — a small change to make
+  before a real categorization run populates the rules table with junk.
 
 ## Blockers to clear before end-to-end testing
 
@@ -205,7 +335,8 @@ over the dedup logic specifically.
   bitten yet.
 - **`SIMPLEFIN_ACCESS_URL` is only in the local `.env`, not the NAS one.**
   Needed before Phase 3 deploys. Add it directly on the NAS rather than
-  pasting it through a chat session.
+  pasting it through a chat session. Add `TIMEZONE=America/Denver` at the same
+  time — the container's own zone is UTC, which misdates evening purchases.
 - **Property values are not recorded anywhere**, so net worth reads
   −$392,507. Manual asset entries for the two homes are needed before the net
   worth dashboard means anything.

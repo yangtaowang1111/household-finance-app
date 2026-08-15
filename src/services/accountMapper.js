@@ -80,9 +80,11 @@ function mapAccount(account) {
     // through and net worth is a plain SUM over current_balance.
     current_balance: balance,
     currency: account.currency || 'USD',
-    balance_date: account['balance-date']
-      ? new Date(account['balance-date'] * 1000).toISOString()
-      : null,
+    // SimpleFIN also sends `balance-date` (when the bank last observed the
+    // balance). It has no column to live in, so it isn't mapped — storing it
+    // would be a genuine improvement over `account_balance_snapshots.recorded_at`,
+    // which records when *we* wrote the row. Noted as a follow-up rather than
+    // computed and dropped on the floor.
     source: 'simplefin',
   };
 }

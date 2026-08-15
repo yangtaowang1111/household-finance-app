@@ -179,11 +179,19 @@ any unsettled rows stranded until the next `--include-pending` run.
 
 ## Limits worth knowing
 
-- **44-day window cap.** SimpleFIN warns that anything past 45 days "may be
-  capped" in future; the service refuses to request more.
-- **No historical backfill yet.** Loading years of history means paging in
-  ≤44-day windows, one request each. That belongs with the deferred historical
-  import + category walkthrough session.
+- **SimpleFIN holds ~90 days of history, and that is a hard ceiling.** Two
+  probes on 2026-08-15 settled it: a 2-year request came back
+  `"Requested date range exceeds limit of 90 days and was capped"` with an
+  earliest transaction of 2026-05-18 (89 days), and a 90-day window from *one
+  year ago* returned **zero** transactions. So the 90 days is a limit on the
+  history itself, not on the width of a single request — paging backward does
+  not work. **Anything older than ~90 days must come from bank statements or
+  another source; the API cannot supply it.**
+- **45 days is a soft advisory, 90 is the enforced cap.** Requests over 45 days
+  return a "recommended range" warning in `errors[]` but still serve data.
+  `MAX_LOOKBACK_DAYS` is set conservatively at 44 to keep runs clean; raise it
+  toward 90 for a one-time deep pull, accepting the advisory (which will mark
+  the run `partial`).
 - **Transfers are not detected.** A credit card autopay appears twice — once
   negative on the checking account, once positive on the card. Both are real
   transactions, but categorizing them as spending double counts. The seeded

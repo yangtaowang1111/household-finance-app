@@ -92,7 +92,7 @@ Full walkthrough: [docs/phase2-nas-deployment.md](docs/phase2-nas-deployment.md)
 
 **Done:** the backend runs unattended on the NAS (`restart: unless-stopped`), and `/health` was confirmed reachable from a phone over cellular data via Tailscale (no public port opened).
 
-### Phase 3 — Bank connection — IN PROGRESS
+### Phase 3 — Bank connection — DONE
 
 - [x] Sign up for SimpleFIN Bridge ([bridge.simplefin.org](https://bridge.simplefin.org), ~$1.50/mo), connect accounts, redeem the setup token
 - [x] Store the access URL as `SIMPLEFIN_ACCESS_URL` in `.env` (never commit it) — local only so far
@@ -103,11 +103,11 @@ Full walkthrough: [docs/phase2-nas-deployment.md](docs/phase2-nas-deployment.md)
 - [x] Tests (`npm test`) covering the dedup branches
 - [x] `/code-review` pass over the dedup logic — 9 findings, all fixed
 - [x] `/code-review ultra` pass — 10 more findings, all fixed (including a migration gap that would have crash-looped the NAS container)
-- [ ] Deploy to the NAS: `SIMPLEFIN_ACCESS_URL` + `TIMEZONE` in its `.env`, rebuild, run the migration
-- [ ] Schedule the daily sync (4am, root's crontab — see [docs/phase3-bank-sync.md](docs/phase3-bank-sync.md))
-- [ ] Set `ANTHROPIC_API_KEY` so newly synced transactions actually get categorized
+- [x] Deployed to the NAS (migrations 1–3 applied to the live database; 13 accounts, 119 transactions)
+- [x] Daily sync scheduled — 4am in root's crontab, cron path verified end-to-end
+- [x] `ANTHROPIC_API_KEY` set; all 119 transactions categorized, 87 rules learned, ~$0.05
 
-**Done when:** transactions show up automatically each day, categorized, with no manual CSV uploads.
+**Done:** transactions arrive automatically each day, categorized, with no manual CSV uploads.
 
 Running and reviewing the sync: [docs/phase3-bank-sync.md](docs/phase3-bank-sync.md).
 

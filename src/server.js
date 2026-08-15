@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 
 require('./db'); // applies schema on startup
-const { seedCategories } = require('./db/seed');
+const { seedTaxonomy } = require('./db/seedTaxonomy');
 const apiKeyAuth = require('./middleware/apiKeyAuth');
 
 const accountsRouter = require('./routes/accounts');
@@ -13,7 +13,7 @@ const importRouter = require('./routes/import');
 const categorizeRouter = require('./routes/categorize');
 const syncRouter = require('./routes/sync');
 
-seedCategories();
+seedTaxonomy({ log: true });
 
 const app = express();
 app.use(express.json());

@@ -180,6 +180,114 @@ const MIGRATIONS = [
       return added;
     },
   },
+  {
+    version: 4,
+    name: 'accounts-property-nickname-owner',
+    up(db) {
+      if (!tableExists(db, 'accounts')) return [];
+
+      const added = [];
+      if (addColumnIfMissing(db, 'accounts', 'nickname', 'TEXT')) added.push('nickname');
+      if (addColumnIfMissing(db, 'accounts', 'owner', 'TEXT')) added.push('owner');
+
+      // 'property' lets a house be held as an asset account. Without it the
+      // only way to record one is to mislabel it 'investment', which would
+      // corrupt any investment view later. A CHECK can't be altered in place,
+      // so this needs the same rebuild migration 3 used.
+      const currentSql = db
+        .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'accounts'")
+        .get().sql;
+      if (currentSql.includes("'property'")) return added;
+
+      db.exec(`
+        CREATE TABLE accounts_rebuilt (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          institution TEXT,
+          type TEXT NOT NULL CHECK (type IN ('checking', 'savings', 'credit', 'investment', 'mortgage', 'loan', 'property')),
+          current_balance REAL NOT NULL DEFAULT 0,
+          currency TEXT NOT NULL DEFAULT 'USD',
+          nickname TEXT,
+          owner TEXT,
+          source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('simplefin', 'manual')),
+          simplefin_id TEXT UNIQUE,
+          type_confirmed INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        INSERT INTO accounts_rebuilt
+          (id, name, institution, type, current_balance, currency, nickname, owner, source, simplefin_id, type_confirmed, created_at)
+        SELECT
+           id, name, institution, type, current_balance, currency, nickname, owner, source, simplefin_id, type_confirmed, created_at
+        FROM accounts;
+
+        DROP TABLE accounts;
+        ALTER TABLE accounts_rebuilt RENAME TO accounts;
+      `);
+
+      const violations = db.prepare('PRAGMA foreign_key_check').all();
+      if (violations.length > 0) {
+        throw new Error(`accounts rebuild left ${violations.length} foreign key violations`);
+      }
+
+      added.push("rebuilt accounts to allow type 'property'");
+      return added;
+    },
+  },
+  {
+    version: 5,
+    name: 'categories-counts-as-spending',
+    up(db) {
+      if (!tableExists(db, 'categories')) return [];
+
+      const added = [];
+      if (addColumnIfMissing(db, 'categories', 'counts_as_spending', 'INTEGER NOT NULL DEFAULT 1')) {
+        added.push('counts_as_spending');
+      }
+
+      // UNIQUE on name lets the taxonomy seed upsert instead of duplicating on
+      // every boot. Adding a constraint needs a rebuild; ids are preserved, so
+      // transactions.category_id references stay valid (foreign keys are off
+      // for the duration — see migrate()).
+      const currentSql = db
+        .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'categories'")
+        .get().sql;
+      if (/name\s+TEXT\s+NOT\s+NULL\s+UNIQUE/i.test(currentSql)) return added;
+
+      const dupes = db
+        .prepare('SELECT name, COUNT(*) AS n FROM categories GROUP BY name HAVING n > 1')
+        .all();
+      if (dupes.length > 0) {
+        throw new Error(
+          `cannot add UNIQUE(name) to categories — duplicates exist: ${dupes.map((d) => d.name).join(', ')}`
+        );
+      }
+
+      db.exec(`
+        CREATE TABLE categories_rebuilt (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL UNIQUE,
+          bucket TEXT CHECK (bucket IN ('retirement', 'investment', 'college_fund', 'emergency_fund', 'other')),
+          parent_category_id INTEGER REFERENCES categories(id),
+          counts_as_spending INTEGER NOT NULL DEFAULT 1
+        );
+
+        INSERT INTO categories_rebuilt (id, name, bucket, parent_category_id, counts_as_spending)
+        SELECT id, name, bucket, parent_category_id, counts_as_spending FROM categories;
+
+        DROP TABLE categories;
+        ALTER TABLE categories_rebuilt RENAME TO categories;
+      `);
+
+      const violations = db.prepare('PRAGMA foreign_key_check').all();
+      if (violations.length > 0) {
+        throw new Error(`categories rebuild left ${violations.length} foreign key violations`);
+      }
+
+      added.push('rebuilt categories with UNIQUE(name)');
+      return added;
+    },
+  },
 ];
 
 const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

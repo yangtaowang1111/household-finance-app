@@ -12,13 +12,13 @@ router.get('/', (req, res) => {
 });
 
 router.post('/', (req, res) => {
-  const { name, institution, type, current_balance = 0, source = 'manual' } = req.body;
+  const { name, institution, type, current_balance = 0, source = 'manual', nickname, owner } = req.body;
   if (!name || !type) return res.status(400).json({ error: 'name and type are required' });
 
   const result = db.prepare(`
-    INSERT INTO accounts (name, institution, type, current_balance, source)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(name, institution || null, type, current_balance, source);
+    INSERT INTO accounts (name, institution, type, current_balance, source, nickname, owner)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(name, institution || null, type, current_balance, source, nickname || null, owner || null);
 
   insertSnapshot.run(result.lastInsertRowid, current_balance);
 

@@ -7,9 +7,10 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "db:init": "node src/db/seed.js",
+    "db:init": "node src/db/seedTaxonomy.js",
     "backup": "node scripts/backup-db.js",
     "sync": "node scripts/daily-sync.js",
+    "import:history": "node scripts/import-history.js",
     "test": "node --test \"tests/*.test.js\""
   },
   "dependencies": {

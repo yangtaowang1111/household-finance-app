@@ -12,7 +12,7 @@ that cost time to discover. Read this alongside [CLAUDE.md](../CLAUDE.md).
 |---|---|
 | Phase 1 — Core backend | Built and tested end-to-end, except live AI categorization (no API key yet) |
 | Phase 2 — NAS deployment | Done and verified — running unattended on the DXP4800 |
-| Phase 3 — Bank connection | Account + transaction sync built and verified against real data; not yet deployed to the NAS or scheduled |
+| Phase 3 — Bank connection | **Done** — deployed to the NAS, syncing and categorizing on a 4am cron |
 | Phase 4 — Mobile UI | Not started |
 | Phase 5 — Forecasting | Deferred by design |
 
@@ -272,6 +272,172 @@ scheduler we could find, so the daily 3am backup lives in root's crontab.
 except `POST /api/categorize` works without it. Set it when ready to test
 categorization for real.
 
+**Tracking golf as its own line (raised 2026-08-15, during the first
+categorization run).** Greens fees at the Denver-area courses (Raccoon Creek,
+Red Hawk Ridge, Meadowhills) categorize consistently as `Entertainment`, and
+the ask is to see golf spending on its own.
+
+**Direction chosen: category groups with rollup**, not cross-cutting tags.
+Top-level groups stay the default view so the headline numbers stay readable;
+subcategories exist for the things worth watching individually and roll up
+into their parent. Two levels is enough — it's what YNAB and Monarch both
+settled on, and it avoids recursive-query complexity.
+
+Cheap to do, and cheap to defer: `categories.parent_category_id` already
+exists from Phase 1 (unused — all 21 seeded categories are flat), and setting
+a parent moves no transactions, so **there is no data migration**. Three small
+changes when the time comes:
+
+- `budgetCalc.js` — `budgetVsActual` matches `category_id` exactly, so child
+  spend must be rolled into the parent (~15 lines).
+- `buildSystemPrompt` in `categorizer.js` — render the tree so the model picks
+  leaf categories.
+- `GET /api/transactions?category_id=` — optionally include children.
+
+**The one real decision is where budgets live.** Budgeting on both a parent
+and its child double-counts. The convention that works: budget at the leaf,
+roll up for display — groups are a reporting concept, not a budgeting one.
+
+Do it during the historical import, not before: changing the taxonomy first
+would mean categorizing everything twice, and a year of real data is what
+tells you which subcategories are actually worth having.
+
+Open wrinkle for that session: under strict hierarchy, golf *gear* stays in
+Shopping, so "Golf" under Entertainment captures greens fees only. If one
+total for all golf spending is the goal, Golf wants to be a top-level group
+rather than a child.
+
+**SimpleFIN only holds ~90 days of history — confirmed 2026-08-15, and it
+changes the historical-import plan.** A 2-year request returned
+`"Requested date range exceeds limit of 90 days and was capped"` with an
+earliest transaction of 2026-05-18; a 90-day window from one year ago returned
+zero rows. The ceiling is on the history itself, not the request width, so
+paging backward does not help.
+
+Consequences:
+- **Bank statements are mandatory, not optional**, for the 1–2 years of trend
+  and forecasting data that's wanted. The API cannot supply it at any price.
+- There is a clean seam at **2026-05-18**: SimpleFIN owns everything after it
+  (with real `simplefin_id`s and proper dedup), statements own everything
+  before. Cutting the statement import there avoids an overlap region full of
+  `possible_duplicate_of` flags.
+- A one-time 90-day sync would immediately triple the current data (389
+  transactions available vs. 119 stored) at the cost of one API call, and
+  those rows dedup properly. Worth doing before any statement work.
+- The manually-categorized Google Sheet is therefore more valuable than first
+  thought — it may be the only structured record of last year's spending.
+
+**Decisions from reviewing the 2025 categorized CSV (2026-08-16):**
+
+- **`Owner` (Tony / Sophia / Household) is an account attribute, not
+  per-transaction attribution.** It reflects *whose card it is* — some of
+  Sophia's cards predate the marriage and Tony has no access — not who made a
+  given purchase. So it belongs on `accounts.owner`, not on `transactions`.
+  **This closes the users-table question**: no per-user attribution is needed,
+  and Phase 4 can ship a single shared PIN rather than per-person login.
+- **Rental property gets separated from the primary home — a deliberate scope
+  change.** CLAUDE.md lists "Business/rental P&L mode" under *Skip*, but the
+  2025 sheet has five rental-specific categories (Rental Income, Rental
+  Property Mortgage Payment, Rental Property HOA payment, Rental Property R&M,
+  Rental Property Management Fee) and separates Primary vs Rental consistently
+  across mortgages, HOA, and repairs. Driver is **tax reporting** — Schedule E
+  needs income, mortgage interest, HOA, repairs, and management fees cleanly
+  separable, so "close enough" isn't sufficient.
+- **House values stay manual, with a quarterly reminder in the UI.** Zillow
+  retired its public Zestimate API and Redfin never had one; the remaining AVM
+  options (RentCast, ATTOM, HouseCanary) add a dependency and a key to manage
+  for a number that is itself a ±5–10% estimate and moves a few percent a year.
+  Manual entry via `PATCH /api/accounts/:id/balance` already writes a balance
+  snapshot, so history is preserved. Wants a `value_updated_at` on the account
+  and a nudge past 90 days — a Phase 4 item.
+- **Data gap to close:** the sheet covers calendar 2025; SimpleFIN reaches back
+  only to ~2026-05-18. That leaves **2026-01-01 → 2026-05-17 uncovered by
+  either source** — roughly four and a half months that need bank statements.
+
+**Taxonomy designed and agreed (2026-08-16).** The 72 hand-written categories
+in the 2025 sheet collapse to **14 groups** with children underneath — see
+[src/db/taxonomy.js](../src/db/taxonomy.js), where every one of the 72 maps
+explicitly and the reasoning per group is commented. Verified against the real
+file: 1,614 rows, zero unmapped. Decisions made along the way:
+
+- **Golf is top-level**, by request and by weight ($13,476 / 112 rows in 2025 —
+  more than groceries). Splitting it immediately earned its keep: **gear
+  ($8,007) is double the green fees ($4,039)**, which a flat category hid.
+- **Rental Property is its own group**, isolated from Home & Utilities for
+  Schedule E.
+- **Savings & Investments counts as spending.** Contributions are budgeted like
+  a bill; treating them as neutral would make a month look affordable when the
+  529 payment had already claimed the money.
+- **The one-off $10,000 "Transfer" is reclassified as a College Fund (529)
+  contribution**, per the same rule. ⚠️ Caveat worth remembering: that money
+  came out of the Chase *Savings* account, not from 2025 income, so counting it
+  as 2025 spending is what flips the year's net from **+$10,484 to −$2,516**.
+  The recurring $500/month contributions come from checking and are
+  unambiguous; this single row is the one that distorts income-vs-spending.
+- **Shopping stays one bucket** (274 rows, $12,580 — mostly Amazon/Target).
+  The notes don't support splitting it without guessing. *Future idea: break
+  out baby-related spending (diapers etc.) once it's worth tracking.*
+- **`countsAsSpending` is a field, not a naming convention** — credit card
+  payments, internal transfers and the fee/waiver pairs stay as real
+  transactions but never reach budget math.
+
+**Data-quality finding the importer must handle: three of Sophia's cards use
+the opposite sign convention.** Chase exports record purchases negative and
+payments positive; **Hilton Amex, Nordstrom, and United record purchases
+POSITIVE and payments NEGATIVE**. That inflates income and understates
+spending (e.g. a $550 Amex annual fee currently reads as +$550). It also
+explains the −$3,370 residual in card payments exactly: 2 × $1,684.97 of
+mis-signed payments, to the cent. **The importer must flip signs per source
+account**, not globally.
+
+**The historical importer is built and rehearsed locally (2026-08-16).**
+`src/services/historyImporter.js` + `npm run import:history` (`-- --dry-run` to
+report without writing). All 1,614 rows of 2025 imported; re-running imports 0.
+48 tests pass.
+
+- **162 rules learned** from a year of the household's own categorisations,
+  versus the 87 Claude had guessed. Patterns are normalised so store numbers
+  don't stick: `CHICK-FIL-A #1111` → `CHICK-FIL-A`, so every branch matches.
+  A rule is only learned from a merchant seen ≥2 times and categorised
+  consistently ≥80% of the time — 7 conflicting merchants (e.g. `WWW COSTCO
+  COM`, both groceries and a rental-property appliance) deliberately taught
+  nothing, since a wrong rule mis-files every future transaction.
+- **The sign correction validated itself.** After flipping the three inverted
+  cards, `Transfers & Non-Spending` nets **+$8** — down from −$3,370. Card
+  payments now cancel almost exactly, which is the independent confirmation
+  that the inverted-sign diagnosis was right.
+- **A dedup bug caught in rehearsal, worth $1,120.** The first pass imported
+  1,607 of 1,614: an existence-check dedup was swallowing *genuine* same-day
+  repeats (two `WESTERN UNION -1000.99` on 2025-11-05, two `SOUTH SUBURBAN
+  GOLF COUR -4` on 11-10). Dedup now compares **counts**, so N real copies
+  import once and a re-run still adds nothing. This is the same hazard the
+  SimpleFIN sync avoided — but there the probe showed zero same-day identical
+  pairs, and here they exist.
+- **2025 totals** (sign-corrected): income **$214,489**, spending
+  **$220,394**, net **−$5,905**. Excluding the $13,000 of savings/529
+  contributions that now count as spending, cash flow is **+$7,095**.
+- **Account mapping resolved: 7 of 11 map onto synced accounts**, and the 4
+  created are all Sophia's cards, which genuinely cannot sync (they predate the
+  marriage and Tony has no access). No duplicates.
+- ⚠️ **`PREMIER PLUS CKG` and `PREMIER SAVINGS` are CHASE accounts, not U.S.
+  Bank** — "Premier Plus Checking" is a Chase product, and SimpleFIN's
+  institution field says Chase. A first pass had them mapped to the U.S. Bank
+  checking and got it backwards. The transaction volumes settle it
+  independently: Chase checking is the busy one (322 rows/year in the sheet,
+  34 in 30 days synced), U.S. Bank's `Checking - 3475` is quiet (51/year, 6 in
+  30 days). Worth remembering — the account *names* are misleading.
+- **Credit card payments confirmed neutral**: 94 rows, net **exactly $0.00**,
+  `counts_as_spending = 0`, driven by 7 learned rules (`CHASE CREDIT CRD
+  AUTOPAY`, `AUTOMATIC PAYMENT - THANK`, `WEB AUTHORIZED PMT CARDMEMBER SERV`,
+  …). The rules discriminate correctly — `VERIZON WIRELESS PAYMENTS` stays
+  real spending under Mobile Phone rather than being swept up as a payment.
+- `seedTaxonomy.js` retires the 10 Phase 1 flat categories the new tree
+  doesn't reuse and resets any transaction pointing at them, so the
+  categoriser redoes those against the new taxonomy. Names the new tree kept
+  (Groceries, Dining Out, Travel, Insurance, Subscriptions, Income, Shopping,
+  Transportation, Uncategorized, the two contribution categories) keep their
+  ids, so those transactions are untouched.
+
 **Historical import + category walkthrough.** The plan is to bulk-upload last
 year's statements plus ~6 months of this year, run categorization, then go
 through the results together to refine the vendor→category mappings. That's
@@ -289,8 +455,25 @@ Worth knowing what's actually been exercised vs. merely written:
 - Budget-vs-actual returned `176.46` actual vs `150` budgeted → `-26.46`
   variance, after a rounding fix for floating-point noise
 - The Docker build and the backup script were verified on the NAS
-- **Not yet exercised:** the Claude API categorization path, and therefore the
-  auto rule-learning logic that hangs off it
+- **Categorization was finally exercised for real on 2026-08-15**, on the NAS,
+  against all 119 synced transactions. Results: 87 rules learned, 3 flagged
+  low-confidence, 0 left uncategorized, and the whole run cost about five
+  cents on `claude-sonnet-5`. The `payee` fix landed correctly — learned
+  patterns are clean merchant names (`McDonald's`, `The Little Diner`,
+  `Trader Joe's`), not store-numbered descriptors.
+- The three low-confidence flags were the genuinely ambiguous rows: a $0.01
+  micro-deposit with a mangled ACH descriptor, and a −$14.95 bank fee paired
+  with its +$14.95 reimbursement (which is why `Uncategorized` totals exactly
+  $0.00). Worth a `Bank Fees` category eventually.
+- **Rule hit rate starts low and climbs.** The first run matched only 2 of 69
+  by rule, because a 30-day window has little merchant repetition (126
+  distinct payees across 222 transactions in the original probe). With 87
+  rules now stored, nightly runs should be mostly free.
+- **Transfers double-counting is now visible in real data:** the `Transfers`
+  category totals **+$1,946.14** because credit card payments land positive on
+  the card and negative on checking. Any net-spend calculation must exclude
+  it. Isolating them in one category makes that easy — but nothing does it
+  automatically yet.
 
 ## Next steps (Phase 3, part 3 — deployment)
 

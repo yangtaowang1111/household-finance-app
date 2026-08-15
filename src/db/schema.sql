@@ -2,9 +2,18 @@ CREATE TABLE IF NOT EXISTS accounts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   institution TEXT,
-  type TEXT NOT NULL CHECK (type IN ('checking', 'savings', 'credit', 'investment', 'mortgage', 'loan')),
+  type TEXT NOT NULL CHECK (type IN ('checking', 'savings', 'credit', 'investment', 'mortgage', 'loan', 'property')),
   current_balance REAL NOT NULL DEFAULT 0,
   currency TEXT NOT NULL DEFAULT 'USD',
+  -- A name a human chose, which sync never touches. The three Ally accounts are
+  -- all literally called "Savings Account"; without this they are impossible to
+  -- tell apart in a UI. Same principle as type_confirmed — human input outranks
+  -- synced values.
+  nickname TEXT,
+  -- Whose account it is (e.g. 'Tony', 'Sophia', 'Household') — an access fact,
+  -- not an attribution of who spent the money. Some cards predate the marriage
+  -- and only one person can see them.
+  owner TEXT,
   source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('simplefin', 'manual')),
   -- SimpleFIN's stable account id (format: 'ACT-<uuid>'). Required to match a
   -- remote account to its local row on every subsequent sync — without it, each
@@ -20,9 +29,15 @@ CREATE TABLE IF NOT EXISTS accounts (
 
 CREATE TABLE IF NOT EXISTS categories (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL,
+  name TEXT NOT NULL UNIQUE,
   bucket TEXT CHECK (bucket IN ('retirement', 'investment', 'college_fund', 'emergency_fund', 'other')),
-  parent_category_id INTEGER REFERENCES categories(id)
+  -- NULL for a top-level group; set for a child. Two levels only — deeper
+  -- nesting buys nothing here and complicates every rollup query.
+  parent_category_id INTEGER REFERENCES categories(id),
+  -- 0 for money that moves without being spent: credit card payments, internal
+  -- transfers, the bank fee/waiver pairs. These stay real transactions but must
+  -- never reach budget-vs-actual, or every total double-counts.
+  counts_as_spending INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS transactions (

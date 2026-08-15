@@ -55,6 +55,88 @@ been committed.
 **Docker needs `sudo` on the NAS.** The login user isn't in the `docker`
 group. Every Docker command in the deployment doc is prefixed accordingly.
 
+**Added app-level API key auth ahead of schedule (before Phase 3 sync).**
+The original plan deferred all auth to Phase 4 (PIN/biometric, once the
+mobile app exists), relying on Tailscale network membership alone in the
+meantime. That was an acceptable gap while the API held only test data, but
+real SimpleFIN transaction/balance data starts flowing in Phase 3, so a
+shared-secret `x-api-key` header check (`src/middleware/apiKeyAuth.js`) was
+added first. It fails **closed**: every `/api/*` request is rejected if
+`API_KEY` isn't set in `.env` — `/health` stays open for uptime checks. This
+is a stopgap, not a replacement for Phase 4's real per-user auth.
+
+**Closed three API-completeness gaps found in a scope review (2026-08-12),
+ahead of Phase 3:**
+- `POST /api/transactions` — manual transaction entry (cash spending,
+  anything SimpleFIN can't reach) was listed in the brief but had no
+  endpoint; only `GET` and category-patch existed.
+- `account_balance_snapshots` table, `PATCH /api/accounts/:id/balance`, and
+  `GET /api/accounts/:id/balance-history` — `accounts.current_balance` was a
+  single live number with no history, but net-worth-over-time and per-account
+  trend charts (both Build features) need a time series. Snapshots are now
+  written on account creation and every balance update; the SimpleFIN sync
+  service (Phase 3) should write one on every pull too, once it exists.
+- `categorizeUncategorized()` now hard-caps `limit` at 500 regardless of
+  caller input (`MAX_LIMIT` in `src/services/categorizer.js`) — previously
+  unbounded, which was a real Claude-API-cost exposure once real data (and a
+  real API key) is in play.
+
+All three were smoke-tested against a scratch DB (account create → balance
+patch → history read → manual transaction create, plus the auth and
+validation error paths) before being logged here.
+
+**Phase 3, part 1 — account sync is built and working (2026-08-14).**
+SimpleFIN setup token was redeemed; `SIMPLEFIN_ACCESS_URL` is in the local
+`.env` (NOT yet on the NAS — that still needs doing before deployment).
+13 accounts across Chase / U.S. Bank / Ally now sync into the DB.
+
+What the real API data settled, that we'd been guessing at:
+- **Liabilities come back negative** (`Mortgage - 1176: -227877.82`,
+  credit cards negative, deposits positive). So net worth is a plain
+  `SUM(current_balance)` with no sign-flipping. Question closed.
+- **SimpleFIN sends no account type at all.** Type is inferred from the
+  account name (`src/services/accountMapper.js`) with a confidence level.
+  Names with a keyword ("Mortgage - 1176", "PREMIER PLUS CKG") infer at high
+  confidence; card brand names ("Chase Freedom", "Rapid Rewards Plus") only
+  at medium. All 13 inferred correctly and were human-confirmed on the first
+  run, so every row has `type_confirmed = 1`.
+- `balance` arrives as a **string**, `balance-date` as a Unix timestamp.
+- An `errors[]` array reports per-institution problems (e.g. a bank needing
+  re-auth) alongside a 200 — a partial sync must not look like a clean one,
+  so `syncAccounts()` returns it rather than swallowing it.
+
+Schema changes this forced (dev DB was empty, so it was recreated rather
+than migrated — **a real migration path will be needed once the NAS holds
+live data**):
+- `accounts.simplefin_id` (UNIQUE) — without it the second sync would have
+  duplicated every account instead of updating it.
+- `accounts.type_confirmed` — sync never overwrites a human-corrected type.
+- `accounts.currency`, and `mortgage` / `loan` added to the type CHECK
+  constraint (the two U.S. Bank mortgages had nowhere to go before).
+
+Verified: first sync created 13; second sync created 0 / updated 13 (no
+duplicates); a manually corrected type survived a subsequent sync.
+
+**Net worth currently reads −$392,507 — and that is expected, not a bug.**
+The mortgages are counted but the properties themselves aren't; SimpleFIN
+knows about accounts, not real estate. A meaningful net worth needs manual
+asset entries for the two properties' values. Worth doing before the net
+worth dashboard is built, or the headline number will be alarming and wrong.
+
+**Deferred from the same review, to revisit once SimpleFIN access is set up
+and Phase 3 work begins:**
+- No `users` table or per-user attribution — "joint access for you and your
+  wife" is in Build scope, but the API-key auth just added is one shared
+  secret with no concept of *which* of you did something. Worth deciding
+  before Phase 4 whether that's ever needed, since retrofitting a users
+  table after transactions/categories exist unscoped to one is more painful
+  than designing it in from the start.
+- Recurring transaction / subscription detection (a listed Build feature)
+  has no schema or service home yet. Probably a computed view over
+  `transactions` rather than its own table, but wants a design pass before
+  Phase 3's sync cadence is locked in, since that cadence affects how
+  reliably recurrence can be detected.
+
 **Cron instead of a Task Scheduler GUI.** UGOS's Control Panel had no task
 scheduler we could find, so the daily 3am backup lives in root's crontab.
 `sudo crontab -l` to inspect it.

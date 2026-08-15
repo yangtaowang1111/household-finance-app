@@ -3,6 +3,8 @@ const db = require('../db');
 
 const MODEL = 'claude-sonnet-5';
 const BATCH_SIZE = 25;
+const DEFAULT_LIMIT = 200;
+const MAX_LIMIT = 500; // hard cap regardless of caller input — bounds Claude API cost per call
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -66,7 +68,8 @@ async function categorizeBatch(transactions, categories, systemPrompt) {
  * Non-low-confidence AI results are written back as new rules, so the same
  * merchant skips the API on future runs.
  */
-async function categorizeUncategorized(limit = 200) {
+async function categorizeUncategorized(limit = DEFAULT_LIMIT) {
+  const cappedLimit = Math.min(Number(limit) || DEFAULT_LIMIT, MAX_LIMIT);
   const categories = db.prepare('SELECT id, name, bucket FROM categories').all();
   const rules = db.prepare(`
     SELECT cr.merchant_pattern, c.id AS category_id, c.name
@@ -76,7 +79,7 @@ async function categorizeUncategorized(limit = 200) {
     SELECT id, merchant_raw, amount FROM transactions
     WHERE category_id IS NULL
     LIMIT ?
-  `).all(limit);
+  `).all(cappedLimit);
 
   if (uncategorized.length === 0) return { ruleMatched: 0, aiCategorized: 0, needsReview: 0, rulesLearned: 0 };
 

@@ -3,3 +3,10 @@ data/
 .env
 *.log
 .claude/settings.local.json
+
+# Safety net: this repo is public, so never let a stray credential file in.
+# Secrets belong in .env (gitignored above) or a password manager — not here.
+SimpleFIN Access URL/
+*Access URL*
+*secret*
+*credential*

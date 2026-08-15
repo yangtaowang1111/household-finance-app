@@ -50,6 +50,17 @@ async function main() {
       `${transactions.unchanged} unchanged, ${transactions.pendingSettled} pending settled`
   );
 
+  // SimpleFIN sends no account type, so ours is inferred from the name. The
+  // first run on a fresh database is exactly when a human should look at the
+  // low-confidence guesses — printing them only in the HTTP response would hide
+  // them from the one path that actually creates the accounts.
+  for (const account of accounts.needsReview) {
+    console.warn(`account type needs review: "${account.name}" inferred as ${account.type} (${account.reason})`);
+  }
+  for (const account of accounts.skipped) {
+    console.warn(`skipped account "${account.name}": ${account.reason}`);
+  }
+
   for (const dup of transactions.possibleDuplicates) {
     console.warn(
       `possible duplicate: synced #${dup.synced_transaction_id} (${dup.date} ${dup.amount} ${dup.merchant}) ` +

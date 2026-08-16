@@ -13,6 +13,7 @@ that cost time to discover. Read this alongside [CLAUDE.md](../CLAUDE.md).
 | Phase 1 — Core backend | Built and tested end-to-end, except live AI categorization (no API key yet) |
 | Phase 2 — NAS deployment | Done and verified — running unattended on the DXP4800 |
 | Phase 3 — Bank connection | **Done** — deployed to the NAS, syncing and categorizing on a 4am cron |
+| Historical import | **Done** — 2025 loaded on the NAS (1,614 rows); 1,733 transactions total, net worth $981,793 |
 | Phase 4 — Mobile UI | Not started |
 | Phase 5 — Forecasting | Deferred by design |
 
@@ -437,6 +438,26 @@ report without writing). All 1,614 rows of 2025 imported; re-running imports 0.
   (Groceries, Dining Out, Travel, Insurance, Subscriptions, Income, Shopping,
   Transportation, Uncategorized, the two contribution categories) keep their
   ids, so those transactions are untouched.
+
+**The 2025 import ran on the NAS on 2026-08-16 and is complete.** Migrations 4
+and 5 applied, taxonomy seeded (49 legacy-categorised transactions reset as
+predicted), 1,614 rows imported, both property accounts created.
+
+- **Net worth now reads $981,793** — it was −$392,507 before the properties
+  existed.
+- **The rules paid off immediately.** Re-categorising the 119 synced
+  transactions against the new taxonomy: **89 matched by rule for free**, only
+  30 reached the API, 4 flagged low-confidence. The first-ever categorisation
+  run had `ruleMatched: 0`; a year of the household's own decisions took that
+  to 75% on the first try. Now 188 rules.
+- Totals reconcile with the local rehearsal to the cent. The only apparent
+  difference — Food 462 rows vs 464, Entertainment 225 vs 226 — is the three
+  `2024-12-31` rows in the sheet falling outside a 2025-only query window, not
+  missing data.
+- `scp` to the NAS needs **`-O`**: modern scp uses SFTP, and this box appears
+  to restrict the SFTP subsystem so `/volume1/...` is invisible to it even
+  though the SSH shell reaches it fine. `scp -O` uses the legacy protocol and
+  works. (Alternative: copy to `~` and `mv` it into place.)
 
 **Historical import + category walkthrough.** The plan is to bulk-upload last
 year's statements plus ~6 months of this year, run categorization, then go

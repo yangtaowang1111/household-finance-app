@@ -25,10 +25,17 @@ const { recordRun } = require('./syncRuns');
 const { mapTransaction, normalizeMerchant, toLocalDate } = require('./transactionMapper');
 
 // SimpleFIN warns (in `errors[]`, alongside a 200) that a range beyond 45 days
-// "may be capped" in future. Stay just inside it — the warning fired on a
-// request for exactly 45.
+// "may be capped" in future. Stay just inside it for routine syncs — the
+// warning fired on a request for exactly 45.
 const MAX_LOOKBACK_DAYS = 44;
 const DEFAULT_LOOKBACK_DAYS = 30;
+
+// The real ceiling, established by probe: SimpleFIN serves roughly 90 days and
+// nothing older, whatever start date is asked for. Reachable only by asking for
+// a backfill explicitly, because the window always *ends* at now — days 45-89
+// cannot be assembled out of several routine syncs, however many are run. The
+// advisory warning is expected on these and does not indicate failure.
+const MAX_BACKFILL_DAYS = 89;
 
 // How far a settled transaction may sit from its pending twin. Real data showed
 // posted running up to 4 days from transacted_at; 7 leaves room without
@@ -344,9 +351,10 @@ function upsertTransactions(remoteAccounts, options = {}) {
   return result;
 }
 
-function resolveLookbackDays(days) {
+function resolveLookbackDays(days, backfill = false) {
   const requested = Number(days) || DEFAULT_LOOKBACK_DAYS;
-  return Math.max(1, Math.min(requested, MAX_LOOKBACK_DAYS));
+  const ceiling = backfill ? MAX_BACKFILL_DAYS : MAX_LOOKBACK_DAYS;
+  return Math.max(1, Math.min(requested, ceiling));
 }
 
 /**
@@ -357,7 +365,12 @@ function resolveLookbackDays(days) {
  * a half-written sync is harder to reason about than one that didn't run.
  *
  * @param {object} [options]
- * @param {number}  [options.days=30] Lookback window, capped at 44.
+ * @param {number}  [options.days=30] Lookback window, capped at 44 (89 with
+ *   `backfill`). A clamped request reports `window.requested_days` rather than
+ *   quietly returning a shorter window than was asked for.
+ * @param {boolean} [options.backfill] Raise the cap to SimpleFIN's real 90-day
+ *   ceiling for a one-time catch-up. Off by default so the daily job keeps
+ *   asking for a modest window.
  * @param {boolean} [options.includePending=false] Pull not-yet-settled charges.
  *   Off by default: a pending amount changes when it settles (tips, fuel
  *   pre-auths), so including them makes budget totals wobble, and SimpleFIN
@@ -367,7 +380,8 @@ function resolveLookbackDays(days) {
  */
 async function syncAll(options = {}) {
   const startedAt = new Date().toISOString();
-  const days = resolveLookbackDays(options.days);
+  const requestedDays = Number(options.days) || DEFAULT_LOOKBACK_DAYS;
+  const days = resolveLookbackDays(options.days, options.backfill);
   const windowStart = new Date(Date.now() - days * 86400 * 1000);
   const kind = options.skipAccounts ? 'transactions' : 'all';
 
@@ -450,7 +464,14 @@ async function syncAll(options = {}) {
 
   return {
     status,
-    window: { start: localDate(windowStart), end: localDate(new Date()), days },
+    window: {
+      start: localDate(windowStart),
+      end: localDate(new Date()),
+      days,
+      // Surfaced only when the ask was cut down. A silent clamp reads as a
+      // successful deep sync that quietly returned a third of the range.
+      ...(days < requestedDays && { requested_days: requestedDays }),
+    },
     accounts,
     transactions,
     errors,
@@ -466,6 +487,8 @@ module.exports = {
   syncAll,
   syncTransactions,
   upsertTransactions,
+  resolveLookbackDays,
   MAX_LOOKBACK_DAYS,
+  MAX_BACKFILL_DAYS,
   DEFAULT_LOOKBACK_DAYS,
 };

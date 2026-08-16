@@ -1,13 +1,22 @@
 const express = require('express');
 const db = require('../db');
 const { syncAccounts } = require('../services/accountSync');
-const { syncAll, syncTransactions, MAX_LOOKBACK_DAYS } = require('../services/transactionSync');
+const {
+  syncAll,
+  syncTransactions,
+  MAX_LOOKBACK_DAYS,
+  MAX_BACKFILL_DAYS,
+} = require('../services/transactionSync');
 
 const router = express.Router();
 
 function parseSyncOptions(body = {}) {
   return {
     days: body.days,
+    // Opt-in, because it is for a one-time catch-up rather than the daily job:
+    // it raises the window cap from 44 days to SimpleFIN's real ~90-day ceiling
+    // and accepts the provider's "beyond 45 days" advisory in exchange.
+    backfill: Boolean(body.backfill),
     includePending: Boolean(body.include_pending),
     confirmInferredTypes: Boolean(body.confirm_inferred_types),
   };
@@ -58,7 +67,11 @@ router.get('/runs', (req, res) => {
     .prepare('SELECT * FROM sync_runs ORDER BY started_at DESC LIMIT ?')
     .all(limit)
     .map((row) => ({ ...row, errors: row.errors ? JSON.parse(row.errors) : [] }));
-  res.json({ max_lookback_days: MAX_LOOKBACK_DAYS, runs: rows });
+  res.json({
+    max_lookback_days: MAX_LOOKBACK_DAYS,
+    max_backfill_days: MAX_BACKFILL_DAYS,
+    runs: rows,
+  });
 });
 
 module.exports = router;

@@ -505,8 +505,13 @@ day at a time and cannot be recovered from the API afterwards. One call:
 
 ```bash
 curl -s -X POST -H "x-api-key: $API_KEY" -H "Content-Type: application/json" \
-  -d '{"days": 89}' http://localhost:3000/api/sync
+  -d '{"days": 89, "backfill": true}' http://localhost:3000/api/sync
 ```
+
+`backfill` is required: without it the window is capped at 44 days to respect
+SimpleFIN's "beyond 45 days" advisory, and the request comes back quietly
+shortened. The response now reports `window.requested_days` whenever an ask was
+cut down, so a clamp can't pass for a successful deep sync.
 
 Doing this first also shrinks step 2 — statements then only need to cover
 January to mid-May instead of the full year.

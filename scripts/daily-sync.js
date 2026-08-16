@@ -9,7 +9,10 @@
 // or a partial sync so cron's mail/logs show something went wrong — an
 // unattended job that fails silently is worse than one that doesn't run.
 //
-// Usage: daily-sync.js [--days N] [--include-pending] [--no-categorize]
+// Usage: daily-sync.js [--days N] [--backfill] [--include-pending] [--no-categorize]
+//
+// --backfill raises the window cap from 44 days to SimpleFIN's real ~90-day
+// ceiling, for a one-time catch-up. The daily cron entry should never use it.
 
 require('dotenv').config();
 
@@ -17,12 +20,14 @@ const db = require('../src/db');
 const { syncAll } = require('../src/services/transactionSync');
 
 function parseArgs(argv) {
-  const args = { days: undefined, includePending: false, categorize: true };
+  const args = { days: undefined, backfill: false, includePending: false, categorize: true };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--days') {
       args.days = Number(argv[i + 1]);
       i += 1;
+    } else if (arg === '--backfill') {
+      args.backfill = true;
     } else if (arg === '--include-pending') {
       args.includePending = true;
     } else if (arg === '--no-categorize') {
@@ -40,10 +45,20 @@ async function main() {
   const startedAt = new Date();
   console.log(`[${startedAt.toISOString()}] starting sync (days=${args.days || 'default'}, pending=${args.includePending})`);
 
-  const result = await syncAll({ days: args.days, includePending: args.includePending });
+  const result = await syncAll({
+    days: args.days,
+    backfill: args.backfill,
+    includePending: args.includePending,
+  });
   const { accounts, transactions, window } = result;
 
   console.log(`window: ${window.start} -> ${window.end} (${window.days}d)`);
+  if (window.requested_days) {
+    console.warn(
+      `NOTE: asked for ${window.requested_days} days, got ${window.days} — ` +
+        'pass --backfill to reach past 44'
+    );
+  }
   console.log(`accounts: ${accounts.created} created, ${accounts.updated} updated`);
   console.log(
     `transactions: ${transactions.created} created, ${transactions.updated} updated, ` +

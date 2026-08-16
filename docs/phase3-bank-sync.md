@@ -23,11 +23,16 @@ That is the reason accounts and transactions are not separate jobs.
 ## Running it
 
 ```bash
-npm run sync                         # 30-day window, posted transactions only
-npm run sync -- --days 44            # widest window SimpleFIN will accept
-npm run sync -- --include-pending    # also pull not-yet-settled charges
-npm run sync -- --no-categorize      # import only, skip the Claude API call
+npm run sync                            # 30-day window, posted transactions only
+npm run sync -- --days 44               # widest routine window (45+ warns)
+npm run sync -- --days 89 --backfill    # one-time catch-up to SimpleFIN's ceiling
+npm run sync -- --include-pending       # also pull not-yet-settled charges
+npm run sync -- --no-categorize         # import only, skip the Claude API call
 ```
+
+Without `--backfill` the window is capped at 44 days and a larger request is
+quietly shortened — the run then prints a `NOTE:` line saying what it actually
+fetched, rather than letting 44 days pass for 89.
 
 Exits non-zero on a failed *or* partial sync, so cron surfaces it.
 
@@ -40,8 +45,10 @@ Over HTTP (every `/api/*` route needs the `x-api-key` header):
 | `POST /api/sync/accounts` | Balances only |
 | `GET /api/sync/runs?limit=20` | Sync history |
 
-Body options for the `POST`s: `{"days": 30, "include_pending": false,
-"confirm_inferred_types": false}`.
+Body options for the `POST`s: `{"days": 30, "backfill": false,
+"include_pending": false, "confirm_inferred_types": false}`. When a request is
+clamped, the response's `window` carries `requested_days` alongside the `days`
+actually used.
 
 ## Deploying this to the NAS
 
@@ -188,10 +195,15 @@ any unsettled rows stranded until the next `--include-pending` run.
   not work. **Anything older than ~90 days must come from bank statements or
   another source; the API cannot supply it.**
 - **45 days is a soft advisory, 90 is the enforced cap.** Requests over 45 days
-  return a "recommended range" warning in `errors[]` but still serve data.
-  `MAX_LOOKBACK_DAYS` is set conservatively at 44 to keep runs clean; raise it
-  toward 90 for a one-time deep pull, accepting the advisory (which will mark
-  the run `partial`).
+  return a "recommended range" warning in `errors[]` but still serve data. So
+  there are two ceilings in the code: `MAX_LOOKBACK_DAYS` (44) for routine runs,
+  and `MAX_BACKFILL_DAYS` (89) reachable only with `--backfill` / `"backfill":
+  true`. The split matters because the window always *ends* at now — days 45-89
+  cannot be reached by running the routine sync more often, however many times
+  it runs.
+- **A backfill run reports `partial` and exits non-zero. That is expected.** The
+  advisory arrives in `errors[]`, and any non-empty `errors[]` marks a run
+  partial. Judge it by `transactions.created`, not the exit code.
 - **Transfers are not detected.** A credit card autopay appears twice — once
   negative on the checking account, once positive on the card. Both are real
   transactions, but categorizing them as spending double counts. The seeded

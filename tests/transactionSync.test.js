@@ -22,7 +22,13 @@ process.env.TIMEZONE = 'America/Denver';
 
 const db = require('../src/db');
 const { seedCategories } = require('../src/db/seed');
-const { upsertTransactions } = require('../src/services/transactionSync');
+const {
+  upsertTransactions,
+  resolveLookbackDays,
+  MAX_LOOKBACK_DAYS,
+  MAX_BACKFILL_DAYS,
+  DEFAULT_LOOKBACK_DAYS,
+} = require('../src/services/transactionSync');
 const { mapTransaction } = require('../src/services/transactionMapper');
 
 seedCategories();
@@ -448,4 +454,35 @@ test('an amount correction from the bank is applied', () => {
   const result = upsertTransactions(payload([{ ...original, amount: '-45.00' }]));
   assert.equal(result.updated, 1);
   assert.equal(allTxns()[0].amount, -45);
+});
+
+// --- lookback window ---------------------------------------------------------
+//
+// The window always *ends* at now, so days 45-89 are unreachable by running the
+// routine sync more often. The one-time catch-up needs the higher ceiling, and
+// the daily job needs to keep the lower one.
+
+test('a routine sync is capped at the 45-day advisory', () => {
+  assert.equal(resolveLookbackDays(89), MAX_LOOKBACK_DAYS);
+  assert.equal(resolveLookbackDays(45), MAX_LOOKBACK_DAYS);
+});
+
+test('a backfill reaches SimpleFIN\'s real 90-day ceiling', () => {
+  assert.equal(resolveLookbackDays(89, true), 89);
+  assert.equal(resolveLookbackDays(365, true), MAX_BACKFILL_DAYS, 'and no further');
+});
+
+test('a window smaller than the cap is left alone either way', () => {
+  assert.equal(resolveLookbackDays(7), 7);
+  assert.equal(resolveLookbackDays(7, true), 7);
+});
+
+test('a missing or junk day count falls back to the default', () => {
+  assert.equal(resolveLookbackDays(undefined), DEFAULT_LOOKBACK_DAYS);
+  assert.equal(resolveLookbackDays('not a number'), DEFAULT_LOOKBACK_DAYS);
+  assert.equal(resolveLookbackDays(0), DEFAULT_LOOKBACK_DAYS);
+});
+
+test('a nonsensical day count still yields a usable window', () => {
+  assert.equal(resolveLookbackDays(-5), 1, 'never a backwards window');
 });

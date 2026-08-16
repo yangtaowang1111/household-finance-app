@@ -496,7 +496,61 @@ Worth knowing what's actually been exercised vs. merely written:
   it. Isolating them in one category makes that easy — but nothing does it
   automatically yet.
 
-## Next steps (Phase 3, part 3 — deployment)
+## Next steps (as of 2026-08-16, after the 2025 import)
+
+**1. ⏳ TIME-SENSITIVE — pull SimpleFIN's remaining history now.** Only 30 days
+have ever been synced, but SimpleFIN holds ~90 — so roughly **2026-05-18 →
+2026-07-15 is sitting unclaimed**, and the window is *rolling*: it ages out a
+day at a time and cannot be recovered from the API afterwards. One call:
+
+```bash
+curl -s -X POST -H "x-api-key: $API_KEY" -H "Content-Type: application/json" \
+  -d '{"days": 89}' http://localhost:3000/api/sync
+```
+
+Doing this first also shrinks step 2 — statements then only need to cover
+January to mid-May instead of the full year.
+
+**2. Fill the 2026 gap from bank statements.** Agreed approach:
+
+- **One export per account, NOT consolidated.** Last year's file was merged
+  because the categories were hand-written; raw statements have no categories,
+  so merging would just mean normalising five bank formats by hand — which is
+  the importer's job.
+- Save to **`data/import/2026/`** (gitignored — the repo is public).
+- **Put each account's last four digits in the filename** (e.g.
+  `2026-chase-sapphire-7530.csv`). A bank CSV rarely says which account it came
+  from; the last four map onto the existing account names.
+- **Download checking, savings and every credit card. SKIP both mortgages** —
+  their statements are the loan's internal ledger, and the payment already
+  appears as a debit on Chase checking (`US BANK HOME MTG MTG PYMT`, −$2,969.05
+  and −$2,239.66 monthly). Importing both sides double-counts ~$5,200/month.
+- Set `--before` to whatever `MIN(date) WHERE source='simplefin'` reports after
+  step 1, so the two sources meet without overlapping.
+- **A second importer is needed.** `historyImporter.js` expects the 2025
+  sheet's shape (category, owner, notes columns). Raw statements need per-bank
+  format handling and account assignment by filename — closer to
+  `importer.js`. The transactions arrive uncategorised, which is now cheap:
+  the 188 learned rules cover most merchants.
+
+**3. Phase 4 — build the WEB app first, native later.** A change from the
+brief's Expo-first plan, decided 2026-08-16. The reasoning: a web app is served
+by the container that already runs (no app store, no Expo build, no second
+deployment), it's reachable on a phone through Tailscale anyway, and as a PWA
+it gets a home-screen icon. Most importantly the split is *checking is mobile,
+managing is desktop* — reviewing 1,733 transactions, correcting categories and
+setting budgets across 14 groups is keyboard work. Expo remains open afterwards
+against the same API; nothing gets rebuilt. Trade-off accepted: no native push
+notifications or biometric unlock.
+
+**4. Claude Design pass — deferred by agreement**, to be judged once there is a
+working UI to look at. Nothing about it is a migration: it produces designs,
+Claude Code implements against the existing API, and the backend is untouched.
+Doing it now rather than earlier is an advantage — it can be designed against
+real data (14 real groups, a real net worth, a year of real trends) instead of
+placeholder content that falls apart on contact with fifty-nine categories.
+
+## Earlier next steps (Phase 3, part 3 — deployment, now complete)
 
 Sync and dedup are built, tested, and verified against real data. Both design
 questions that were open here are answered in the part 2 entry above. What

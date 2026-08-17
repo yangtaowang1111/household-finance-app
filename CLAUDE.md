@@ -67,7 +67,8 @@ Implemented in [src/db/schema.sql](src/db/schema.sql), with [src/db/migrate.js](
 - [x] CSV/statement importer (`src/services/importer.js`, `POST /api/import`)
 - [x] Claude API categorization pipeline (`src/services/categorizer.js`, `POST /api/categorize`)
 - [x] Budget-vs-actual calculation logic (`src/services/budgetCalc.js`, `GET /api/budgets/vs-actual`)
-- [ ] Test end-to-end via API calls / Postman with a real statement CSV
+- [x] Test end-to-end via API calls with real data — 2,565 transactions across
+      20 accounts, categorized, with budget-vs-actual and cash flow both running
 
 **Done when:** you can drop a statement CSV in, get back categorized transactions, and see budget-vs-actual numbers for a month.
 
@@ -113,13 +114,29 @@ Running and reviewing the sync: [docs/phase3-bank-sync.md](docs/phase3-bank-sync
 
 Session context, environment quirks, and decisions so far: [docs/project-status.md](docs/project-status.md).
 
-### Phase 4 — Design / mobile UI
-- Use Claude Design to mock up: dashboard (net worth + monthly summary), transaction list, category management, budget view with trend charts
-- `/design-sync` the result into Claude Code, or hand off screenshots/specs directly
-- Build the Expo screens against your existing API
-- Add simple auth (PIN or biometric — single-household app, doesn't need much)
+### Phase 4 — Design / UI — NEXT
 
-**Done when:** you're checking the app on your phone instead of the API directly.
+**Web first, native app second** (decided 2026-08-16, a change from the original
+Expo-first plan). The web app is served by the container that already runs — no
+app store, no Expo build, no second deployment — and it is reachable from a
+phone over Tailscale regardless. The deciding argument is that *checking* is a
+phone job but *managing* is a desktop one: reviewing 2,565 transactions,
+correcting categories and setting budgets across 14 groups is keyboard work.
+Expo stays open afterwards against the same API, and nothing gets rebuilt when
+it arrives. Trade-off accepted: no native push notifications or biometric unlock
+until then.
+
+- Design pass in Claude Design, then `/design-sync` or hand off screenshots
+- Screens: dashboard (net worth + monthly summary), transaction list, category
+  management, budget view with trend charts
+- Build against the existing API — no backend changes expected
+- Simple auth (single-household app, doesn't need much)
+
+**Done when:** you're checking the app instead of the API directly.
+
+### Phase 4b — Native app (optional, later)
+- Expo screens against the same API and database
+- PIN or biometric unlock, push notifications
 
 ### Phase 5 — Forecasting (later, separate scoping pass)
 - This is the most involved piece — worth its own planning session once Phases 1–4 are solid

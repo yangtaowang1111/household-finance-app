@@ -3,6 +3,12 @@ const db = require('../db');
 
 const MODEL = 'claude-sonnet-5';
 const BATCH_SIZE = 25;
+
+// A batch of 25 answers is only ~600 tokens, but 2000 still truncated responses
+// mid-object on the 2026-08-17 run — the model's reasoning is drawn from the
+// same allowance as its output. Output tokens are billed as generated, not as
+// reserved, so a ceiling this high costs nothing until it is used.
+const MAX_OUTPUT_TOKENS = 8000;
 const DEFAULT_LIMIT = 200;
 const MAX_LIMIT = 500; // hard cap regardless of caller input — bounds Claude API cost per call
 
@@ -55,6 +61,43 @@ function chunk(array, size) {
   return out;
 }
 
+/**
+ * Reads the model's answer, salvaging what it can from a malformed one.
+ *
+ * A response cut off by the token limit ends mid-object, which makes the whole
+ * array unparseable — including the twenty-odd complete answers before the cut.
+ * Those are perfectly good, so they are recovered rather than thrown away with
+ * the broken tail. Returns null only when nothing usable came back.
+ */
+const isUsableAnswer = (entry) => Boolean(entry && entry.id != null && entry.category_name);
+
+function parseResults(text) {
+  let entries = null;
+
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) entries = parsed;
+  } catch {
+    // Fall through to salvage.
+  }
+
+  if (!entries) {
+    entries = [];
+    for (const fragment of text.match(/\{[^{}]*\}/g) || []) {
+      try {
+        entries.push(JSON.parse(fragment));
+      } catch {
+        // A partial object at the cut point — expected, and the reason for this.
+      }
+    }
+  }
+
+  // The same test whichever route got us here, so a well-formed response
+  // carrying a useless entry is treated exactly like a salvaged one.
+  const usable = entries.filter(isUsableAnswer);
+  return usable.length ? usable : null;
+}
+
 async function categorizeBatch(transactions, categories, systemPrompt) {
   const userContent = JSON.stringify(
     transactions.map((t) => ({
@@ -70,17 +113,16 @@ async function categorizeBatch(transactions, categories, systemPrompt) {
 
   const response = await client.messages.create({
     model: MODEL,
-    max_tokens: 2000,
+    max_tokens: MAX_OUTPUT_TOKENS,
     system: systemPrompt,
     messages: [{ role: 'user', content: userContent }],
   });
 
   const text = response.content.map((block) => (block.type === 'text' ? block.text : '')).join('');
-  let results;
-  try {
-    results = JSON.parse(text);
-  } catch (err) {
-    throw new Error(`Failed to parse categorization response as JSON: ${text}`);
+  const results = parseResults(text);
+  if (!results) {
+    const hint = response.stop_reason === 'max_tokens' ? ' (response hit the token limit)' : '';
+    throw new Error(`Failed to parse categorization response as JSON${hint}: ${text.slice(0, 300)}`);
   }
 
   const byName = new Map(categories.map((c) => [c.name.toLowerCase(), c]));
@@ -145,9 +187,24 @@ async function categorizeUncategorized(limit = DEFAULT_LIMIT) {
   let needsReview = 0;
   let rulesLearned = 0;
 
+  const failures = [];
+
   for (const batch of chunk(remaining, BATCH_SIZE)) {
     const txnById = new Map(batch.map((t) => [t.id, t]));
-    const results = await categorizeBatch(batch, categories, systemPrompt);
+
+    // Contained per batch on purpose. A single unparseable response used to
+    // throw out of this loop and abandon every batch behind it — on the
+    // 2026-08-17 run that stranded 96 transactions when only about 50 were
+    // actually affected. Nothing here is lost by continuing: the rows keep
+    // category_id NULL and the next run picks them up.
+    let results;
+    try {
+      results = await categorizeBatch(batch, categories, systemPrompt);
+    } catch (err) {
+      failures.push({ size: batch.length, error: err.message.slice(0, 200) });
+      continue;
+    }
+
     for (const result of results) {
       if (!result.category) continue;
       if (result.confidence === 'low') {
@@ -167,7 +224,18 @@ async function categorizeUncategorized(limit = DEFAULT_LIMIT) {
     }
   }
 
-  return { ruleMatched, aiCategorized, needsReview, rulesLearned };
+  return {
+    ruleMatched,
+    aiCategorized,
+    needsReview,
+    rulesLearned,
+    // Surfaced rather than swallowed: a batch that failed leaves its rows
+    // uncategorized, and a caller that sees only the successes would read a
+    // partial run as a complete one.
+    failedBatches: failures.length,
+    failedTransactions: failures.reduce((n, f) => n + f.size, 0),
+    failures,
+  };
 }
 
-module.exports = { categorizeUncategorized, findRuleMatch, rulePatternFor };
+module.exports = { categorizeUncategorized, findRuleMatch, rulePatternFor, parseResults };

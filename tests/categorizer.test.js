@@ -16,7 +16,12 @@ process.env.DB_PATH = DB_FILE;
 
 const db = require('../src/db');
 const { seedCategories } = require('../src/db/seed');
-const { categorizeUncategorized, findRuleMatch, rulePatternFor } = require('../src/services/categorizer');
+const {
+  categorizeUncategorized,
+  findRuleMatch,
+  rulePatternFor,
+  parseResults,
+} = require('../src/services/categorizer');
 
 seedCategories();
 
@@ -111,4 +116,42 @@ test('a negative limit does not become an unbounded query', async () => {
 
   const counts = await categorizeUncategorized(-1);
   assert.equal(counts.ruleMatched, 1, 'still runs, just bounded');
+});
+
+// --- response parsing --------------------------------------------------------
+//
+// The 2026-08-17 run truncated mid-object and lost the whole batch with it,
+// twice. These pin the salvage.
+
+test('reads a well-formed response', () => {
+  const r = parseResults('[{"id":1,"category_name":"Food","confidence":"high"}]');
+  assert.equal(r.length, 1);
+  assert.equal(r[0].category_name, 'Food');
+});
+
+test('salvages the complete answers from a truncated response', () => {
+  // Exactly the shape the real failure took: valid entries, then a cut.
+  const truncated =
+    '[{"id":1,"category_name":"Food","confidence":"high"},' +
+    '{"id":2,"category_name":"Golf","confidence":"medium"},' +
+    '{"id":3';
+  const r = parseResults(truncated);
+  assert.equal(r.length, 2, 'the two finished answers are still good');
+  assert.deepEqual(r.map((x) => x.id), [1, 2]);
+});
+
+test('an entry missing its category is not salvaged', () => {
+  const r = parseResults('[{"id":1,"category_name":"Food","confidence":"high"},{"id":2}]');
+  assert.equal(r.length, 1, 'an id alone says nothing about where it belongs');
+});
+
+test('nothing usable returns null rather than an empty success', () => {
+  assert.equal(parseResults('I could not categorize these.'), null);
+  assert.equal(parseResults(''), null);
+});
+
+test('prose wrapped around the array does not defeat parsing', () => {
+  const r = parseResults('Here you go:\n[{"id":7,"category_name":"Shopping","confidence":"low"}]');
+  assert.equal(r.length, 1);
+  assert.equal(r[0].id, 7);
 });

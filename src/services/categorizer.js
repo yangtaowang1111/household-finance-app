@@ -160,9 +160,17 @@ async function categorizeUncategorized(limit = DEFAULT_LIMIT) {
 
   if (uncategorized.length === 0) return { ruleMatched: 0, aiCategorized: 0, needsReview: 0, rulesLearned: 0 };
 
-  const updateCategory = db.prepare('UPDATE transactions SET category_id = ? WHERE id = ?');
-  const updateCategoryWithNote = db.prepare(
-    "UPDATE transactions SET category_id = ?, notes = ? WHERE id = ?"
+  // `categorized_by` records how each answer was reached. A wrong AI guess is
+  // one bad row; a wrong rule is every future transaction from that merchant.
+  // The review screen cannot tell those apart without this.
+  const updateByRule = db.prepare(
+    "UPDATE transactions SET category_id = ?, categorized_by = 'rule' WHERE id = ?"
+  );
+  const updateByAi = db.prepare(
+    "UPDATE transactions SET category_id = ?, categorized_by = 'ai' WHERE id = ?"
+  );
+  const updateByAiWithNote = db.prepare(
+    "UPDATE transactions SET category_id = ?, notes = ?, categorized_by = 'ai' WHERE id = ?"
   );
   const upsertRule = db.prepare(`
     INSERT INTO categorization_rules (merchant_pattern, category_id)
@@ -175,7 +183,7 @@ async function categorizeUncategorized(limit = DEFAULT_LIMIT) {
   for (const txn of uncategorized) {
     const rule = findRuleMatch(rules, txn);
     if (rule) {
-      updateCategory.run(rule.category_id, txn.id);
+      updateByRule.run(rule.category_id, txn.id);
       ruleMatched += 1;
     } else {
       remaining.push(txn);
@@ -208,10 +216,10 @@ async function categorizeUncategorized(limit = DEFAULT_LIMIT) {
     for (const result of results) {
       if (!result.category) continue;
       if (result.confidence === 'low') {
-        updateCategoryWithNote.run(result.category.id, 'AI confidence: low — please review', result.id);
+        updateByAiWithNote.run(result.category.id, 'AI confidence: low — please review', result.id);
         needsReview += 1;
       } else {
-        updateCategory.run(result.category.id, result.id);
+        updateByAi.run(result.category.id, result.id);
 
         // Learn a rule so the next transaction from this merchant skips the API call.
         const pattern = rulePatternFor(txnById.get(result.id));

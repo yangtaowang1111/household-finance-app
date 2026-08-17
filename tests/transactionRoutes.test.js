@@ -1,0 +1,240 @@
+// The correction endpoint, which is the one place a human overrides the
+// categoriser. Two things it must get right: a correction that teaches a rule
+// changes every future transaction from that merchant, and one that doesn't
+// must leave the rule set alone.
+//
+//   npm test
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'hfa-routes-'));
+process.env.DB_PATH = path.join(TMP, 'test.db');
+process.env.API_KEY = 'test-key';
+
+const db = require('../src/db');
+const { seedTaxonomy } = require('../src/db/seedTaxonomy');
+
+seedTaxonomy();
+
+const app = require('../src/server');
+const PORT = 31999;
+let server;
+
+const categoryId = (name) => db.prepare('SELECT id FROM categories WHERE name = ?').get(name).id;
+
+async function call(method, url, body) {
+  const res = await fetch(`http://127.0.0.1:${PORT}${url}`, {
+    method,
+    headers: { 'x-api-key': 'test-key', 'content-type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return { status: res.status, body: res.status === 204 ? null : await res.json() };
+}
+
+let accountId;
+
+test.before(async () => {
+  await new Promise((resolve) => { server = app.listen(PORT, resolve); });
+});
+
+test.beforeEach(() => {
+  db.prepare('DELETE FROM transactions').run();
+  db.prepare('DELETE FROM categorization_rules').run();
+  db.prepare('DELETE FROM accounts').run();
+  accountId = db
+    .prepare("INSERT INTO accounts (name, type, current_balance, source) VALUES ('Card', 'credit', 0, 'manual')")
+    .run().lastInsertRowid;
+});
+
+test.after(() => {
+  server.close();
+  db.close();
+  fs.rmSync(TMP, { recursive: true, force: true });
+});
+
+function txn(fields = {}) {
+  const { merchant = 'PGA TOUR SUPERSTORE', payee = null, notes = null, category = null } = fields;
+  return db
+    .prepare(
+      `INSERT INTO transactions (account_id, date, amount, merchant_raw, payee, notes, category_id, source)
+       VALUES (?, '2026-02-10', -53.61, ?, ?, ?, ?, 'simplefin')`
+    )
+    .run(accountId, merchant, payee, notes, category ? categoryId(category) : null).lastInsertRowid;
+}
+
+test('a correction without learn_rule leaves the rule set alone', async () => {
+  const id = txn({ category: 'Shopping' });
+  const r = await call('PATCH', `/api/transactions/${id}/category`, { category_id: categoryId('Golf Gear') });
+
+  assert.equal(r.status, 200);
+  assert.equal(r.body.category_id, categoryId('Golf Gear'));
+  assert.equal(r.body.categorized_by, 'manual');
+  assert.equal(r.body.rule_learned, null);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM categorization_rules').get().n, 0);
+});
+
+test('a correction with learn_rule writes one, and says which', async () => {
+  const id = txn({ payee: 'PGA Tour Superstore' });
+  const r = await call('PATCH', `/api/transactions/${id}/category`, {
+    category_id: categoryId('Golf Gear'),
+    learn_rule: true,
+  });
+
+  assert.equal(r.body.rule_learned.merchant_pattern, 'PGA Tour Superstore', 'the payee generalises better than the descriptor');
+  const rule = db.prepare('SELECT * FROM categorization_rules').get();
+  assert.equal(rule.category_id, categoryId('Golf Gear'));
+});
+
+test('correcting the same merchant again replaces the rule rather than duplicating it', async () => {
+  const first = txn({ payee: 'PGA Tour Superstore' });
+  await call('PATCH', `/api/transactions/${first}/category`, { category_id: categoryId('Golf Gear'), learn_rule: true });
+
+  const second = txn({ payee: 'PGA Tour Superstore' });
+  await call('PATCH', `/api/transactions/${second}/category`, { category_id: categoryId('Shopping'), learn_rule: true });
+
+  const rules = db.prepare('SELECT * FROM categorization_rules').all();
+  assert.equal(rules.length, 1, 'merchant_pattern is UNIQUE — the newer answer wins');
+  assert.equal(rules[0].category_id, categoryId('Shopping'));
+});
+
+test('a manual correction clears the low-confidence note', async () => {
+  const id = txn({ notes: 'AI confidence: low — please review', category: 'Shopping' });
+  const r = await call('PATCH', `/api/transactions/${id}/category`, { category_id: categoryId('Golf Gear') });
+
+  assert.equal(r.body.notes, null, 'the note asked a human to look, and one just did');
+});
+
+test('a note the user wrote is not clobbered by a correction', async () => {
+  const id = txn({ notes: 'Birthday present for Dad', category: 'Shopping' });
+  const r = await call('PATCH', `/api/transactions/${id}/category`, { category_id: categoryId('Gifts') });
+
+  assert.equal(r.body.notes, 'Birthday present for Dad');
+});
+
+test('a correction can set a note explicitly', async () => {
+  const id = txn({});
+  const r = await call('PATCH', `/api/transactions/${id}/category`, {
+    category_id: categoryId('Green Fees'),
+    notes: 'Sunday round with Dave',
+  });
+  assert.equal(r.body.notes, 'Sunday round with Dave');
+});
+
+test('an unknown category is refused rather than stored', async () => {
+  const id = txn({});
+  const r = await call('PATCH', `/api/transactions/${id}/category`, { category_id: 999999 });
+  assert.equal(r.status, 400);
+  assert.match(r.body.error, /does not exist/);
+});
+
+test('bulk correction reaches its own route, not /:id/category', async () => {
+  // Registration order matters: with /:id/category first, this binds id="bulk".
+  const a = txn({});
+  const b = txn({});
+  const r = await call('PATCH', '/api/transactions/bulk/category', {
+    ids: [a, b],
+    category_id: categoryId('Green Fees'),
+  });
+
+  assert.equal(r.status, 200);
+  assert.equal(r.body.updated, 2);
+  const rows = db.prepare('SELECT category_id, categorized_by FROM transactions').all();
+  assert.ok(rows.every((t) => t.category_id === categoryId('Green Fees') && t.categorized_by === 'manual'));
+});
+
+test('bulk correction refuses an unreasonable batch', async () => {
+  const r = await call('PATCH', '/api/transactions/bulk/category', {
+    ids: Array.from({ length: 1001 }, (_, i) => i + 1),
+    category_id: categoryId('Groceries'),
+  });
+  assert.equal(r.status, 400);
+});
+
+test('the matching preview shows what a pattern would catch', async () => {
+  txn({ merchant: 'PGA TOUR SUPERSTORE 06' });
+  txn({ merchant: 'WHOLE FOODS MARKET' });
+
+  const r = await call('GET', '/api/transactions/matching?pattern=PGA');
+  assert.equal(r.body.length, 1);
+  assert.match(r.body[0].merchant_raw, /PGA/);
+});
+
+test('the list joins account and category names and honours limit', async () => {
+  txn({ category: 'Groceries' });
+  txn({});
+  const r = await call('GET', '/api/transactions?limit=1');
+
+  assert.equal(r.body.length, 1);
+  assert.equal(r.body[0].account_name, 'Card');
+});
+
+// --- filters ----------------------------------------------------------------
+//
+// These are what the Overview drills down with, so a broken one sends you to an
+// empty page from a number you just clicked.
+
+test('group filter reaches every child of the group', async () => {
+  // The Overview breaks spending down by group, so clicking "Food" must find
+  // rows filed under Groceries and Dining Out — not only ones filed on the
+  // group itself, which in practice is none of them.
+  txn({ merchant: 'WHOLE FOODS', category: 'Groceries' });
+  txn({ merchant: 'RESTAURANT', category: 'Dining Out' });
+  txn({ merchant: 'PINE VALLEY GC', category: 'Green Fees' });
+
+  const r = await call('GET', '/api/transactions?group=Food');
+  assert.equal(r.body.length, 2);
+  assert.deepEqual(
+    r.body.map((t) => t.category_name).sort(),
+    ['Dining Out', 'Groceries']
+  );
+});
+
+test('uncategorized filter finds only unfiled rows', async () => {
+  txn({ category: 'Groceries' });
+  txn({});
+
+  const r = await call('GET', '/api/transactions?uncategorized=1');
+  assert.equal(r.body.length, 1);
+  assert.equal(r.body[0].category_id, null);
+});
+
+test('needs_review filter finds the low-confidence queue', async () => {
+  txn({ notes: 'AI confidence: low — please review', category: 'Shopping' });
+  txn({ notes: 'Birthday present', category: 'Gifts' });
+
+  const r = await call('GET', '/api/transactions?needs_review=1');
+  assert.equal(r.body.length, 1);
+  assert.match(r.body[0].notes, /^AI confidence: low/);
+});
+
+test('min_amount works on absolute value, so big credits are found too', async () => {
+  db.prepare(
+    "INSERT INTO transactions (account_id, date, amount, merchant_raw, source) VALUES (?, '2026-02-11', 78299.40, 'SOLIUM INC', 'csv_import')"
+  ).run(accountId);
+  txn({}); // -53.61
+
+  const r = await call('GET', '/api/transactions?min_amount=1000');
+  assert.equal(r.body.length, 1, 'a $78,299 credit is exactly the row worth finding');
+  assert.match(r.body[0].merchant_raw, /SOLIUM/);
+});
+
+test('search matches the descriptor case-insensitively', async () => {
+  txn({ merchant: 'WHOLE FOODS MARKET' });
+  txn({ merchant: 'SHELL OIL' });
+
+  const r = await call('GET', '/api/transactions?search=whole foods');
+  assert.equal(r.body.length, 1);
+});
+
+test('filters combine rather than replace each other', async () => {
+  txn({ merchant: 'WHOLE FOODS MARKET', category: 'Groceries' });
+  txn({ merchant: 'WHOLE FOODS MARKET' });
+
+  const r = await call('GET', '/api/transactions?search=whole&uncategorized=1');
+  assert.equal(r.body.length, 1, 'both conditions apply, not the last one');
+  assert.equal(r.body[0].category_id, null);
+});

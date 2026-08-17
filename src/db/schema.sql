@@ -81,6 +81,11 @@ CREATE TABLE IF NOT EXISTS transactions (
   -- ON DELETE SET NULL because resolving the flag *is* deleting the row it
   -- points at; without it the intended cleanup fails on a FK constraint.
   possible_duplicate_of INTEGER REFERENCES transactions(id) ON DELETE SET NULL,
+  -- How the category was decided: 'rule', 'ai', 'manual' or 'import'. Recorded
+  -- rather than re-derived, because the rule that matched in February may not
+  -- exist in August. A wrong AI guess is one bad row; a wrong rule is every
+  -- future transaction from that merchant, and they need different fixes.
+  categorized_by TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

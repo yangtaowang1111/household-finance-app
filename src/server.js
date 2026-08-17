@@ -41,4 +41,12 @@ app.use('/api/cashflow', cashflowRouter);
 app.use('/api/networth', networthRouter);
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Household Finance API listening on port ${PORT}`));
+
+// Only binds a port when this file IS the program. Required so tests can mount
+// the real app on an ephemeral port instead of reconstructing the route table,
+// which would let the two drift apart.
+if (require.main === module) {
+  app.listen(PORT, () => console.log(`Household Finance API listening on port ${PORT}`));
+}
+
+module.exports = app;

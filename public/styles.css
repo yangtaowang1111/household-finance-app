@@ -344,3 +344,136 @@ td.amt.in { color: var(--pos); }
   .main { padding: 16px 14px 40px; }
   .hero { font-size: 30px; }
 }
+
+/* --- transactions screen -------------------------------------------------- */
+
+.filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+.filters input, .filters select, .bulkbar select {
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+}
+.filters input[type="search"] { min-width: 200px; flex: 1; }
+.filters input[type="number"] { width: 92px; }
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.check input { accent-color: var(--accent); }
+
+button {
+  padding: 7px 13px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--surface);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+button.ghost { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+button:hover { filter: brightness(1.06); }
+
+.bulkbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  font-size: 12.5px;
+}
+.bulkbar #bulk-count { font-weight: 600; }
+
+/* A category cell is a button, because it is the main thing you do here. */
+.cat-btn {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid transparent;
+  padding: 3px 7px;
+  font-weight: 500;
+  font-size: 12.5px;
+  border-radius: 5px;
+  text-align: left;
+}
+.cat-btn:hover { border-color: var(--line); background: var(--line-soft); filter: none; }
+.cat-btn.none { color: var(--attn); }
+
+/* Where the category came from. Muted, because it matters only when something
+   looks wrong — and then it is the first thing worth knowing. */
+.prov {
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 0 4px;
+  margin-left: 6px;
+  vertical-align: 1px;
+}
+.prov.rule { border-color: var(--accent); color: var(--accent); }
+
+tr.flagged td { background: var(--attn-soft); }
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: oklch(0 0 0 / 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 10;
+}
+.modal-card { width: 100%; max-width: 440px; }
+
+.field { display: block; margin-bottom: 10px; }
+.field > span { display: block; font-size: 11.5px; color: var(--muted); margin-bottom: 4px; }
+.field select, .field input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--text);
+  color: var(--bg);
+  padding: 10px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  z-index: 20;
+  box-shadow: var(--shadow);
+}
+.toast button {
+  background: transparent;
+  color: var(--bg);
+  text-decoration: underline;
+  padding: 0 0 0 10px;
+  font-weight: 600;
+}
+
+td.pick { width: 26px; padding-right: 0; }
+td.pick input { accent-color: var(--accent); }

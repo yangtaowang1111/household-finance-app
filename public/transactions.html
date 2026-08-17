@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transactions — Ledger</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='4' fill='%234a9ba5'/></svg>">
+</head>
+<body>
+
+<div id="gate" class="gate" hidden>
+  <div class="card">
+    <div class="eyebrow">Ledger</div>
+    <h1 style="margin:6px 0 2px;font-size:17px">Enter API key</h1>
+    <p style="color:var(--muted);font-size:12px;margin:0">Stored in this browser only. It's the <code>API_KEY</code> from your <code>.env</code>.</p>
+    <input id="gate-key" type="password" autocomplete="off" spellcheck="false" placeholder="API key">
+    <button id="gate-go">Unlock</button>
+    <p id="gate-err" class="delta down" style="font-size:12px" hidden>That key was rejected.</p>
+  </div>
+</div>
+
+<div class="shell" id="app" hidden>
+  <nav class="sidebar">
+    <div class="brand">
+      <span class="brand-mark"></span>
+      <span>Ledger</span>
+      <span class="badge">self-hosted</span>
+    </div>
+    <a class="nav-item" href="index.html">Overview</a>
+    <a class="nav-item" href="transactions.html" aria-current="page"><span>Transactions</span><span class="count" id="nav-txns">—</span></a>
+    <a class="nav-item" href="#">Spending</a>
+    <a class="nav-item" href="#">Accounts</a>
+    <a class="nav-item" href="#">Investments</a>
+    <a class="nav-item" href="#">Property</a>
+    <a class="nav-item" href="#">Rules &amp; imports</a>
+    <div class="sidebar-foot" id="foot"></div>
+  </nav>
+
+  <main class="main">
+    <div id="errors"></div>
+
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">Transactions</div>
+        <h1 id="heading">All transactions</h1>
+      </div>
+    </div>
+
+    <section class="card" style="margin-bottom:14px">
+      <div class="filters">
+        <input id="f-search" type="search" placeholder="Search descriptions…" autocomplete="off">
+        <select id="f-group"><option value="">All groups</option></select>
+        <select id="f-account"><option value="">All accounts</option></select>
+        <select id="f-month"><option value="">All months</option></select>
+        <input id="f-min" type="number" inputmode="decimal" placeholder="Min $" min="0" step="10">
+        <label class="check"><input type="checkbox" id="f-review"> Needs review</label>
+        <label class="check"><input type="checkbox" id="f-uncat"> Uncategorised</label>
+        <label class="check"><input type="checkbox" id="f-dupes"> Possible duplicates</label>
+        <button id="f-clear" class="ghost">Clear</button>
+      </div>
+    </section>
+
+    <div id="bulkbar" class="bulkbar" hidden>
+      <span id="bulk-count" class="num"></span>
+      <select id="bulk-cat"><option value="">Move to category…</option></select>
+      <button id="bulk-go">Apply</button>
+      <button id="bulk-cancel" class="ghost">Cancel</button>
+    </div>
+
+    <section class="card">
+      <div class="card-head">
+        <span class="eyebrow">Results</span>
+        <span class="pct" id="result-count"></span>
+      </div>
+      <div class="table-wrap" id="list"><div class="skeleton">Loading…</div></div>
+    </section>
+  </main>
+</div>
+
+<!-- Category editor, opened from a row -->
+<div id="editor" class="modal" hidden>
+  <div class="modal-card card">
+    <div class="eyebrow">Recategorise</div>
+    <div id="ed-what" style="font-weight:600;margin:6px 0 2px"></div>
+    <div id="ed-meta" class="sub" style="margin-bottom:12px"></div>
+
+    <label class="field">
+      <span>Category</span>
+      <select id="ed-cat"></select>
+    </label>
+
+    <label class="field">
+      <span>Note <em style="color:var(--muted);font-weight:400">(optional)</em></span>
+      <input id="ed-note" type="text" placeholder="e.g. green fees, not gear">
+    </label>
+
+    <label class="check" style="margin:12px 0 4px">
+      <input type="checkbox" id="ed-learn">
+      <span>Also apply to future transactions from this merchant</span>
+    </label>
+    <p class="note" style="margin:0 0 14px 24px" id="ed-learn-hint"></p>
+
+    <div style="display:flex;gap:8px">
+      <button id="ed-save">Save</button>
+      <button id="ed-cancel" class="ghost">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="common.js"></script>
+<script src="transactions.js"></script>
+</body>
+</html>

@@ -1,18 +1,19 @@
-/* Overview page. Reads the API, renders the panels, no build step and no
-   dependencies — the chart is hand-drawn SVG rather than a charting library,
-   which for one sparkline is less code than the import would be. */
+/* Overview. Shared helpers (api, money, the key gate) live in common.js.
 
-const KEY_STORE = 'ledger.apiKey';
-
-const $ = (id) => document.getElementById(id);
-
-const money = (n, opts = {}) => {
-  if (n === null || n === undefined) return '—';
-  const sign = n < 0 ? '-' : opts.showPlus && n > 0 ? '+' : '';
-  return `${sign}$${Math.abs(Math.round(n)).toLocaleString('en-US')}`;
-};
+   Every number that represents a set of transactions links into the
+   Transactions screen filtered to exactly that set — a figure you can question
+   but not inspect is a dead end. */
 
 const pct = (n) => `${n.toFixed(1)}%`;
+
+/** A link into the Transactions screen, pre-filtered. Filters live in the query
+    string there, so these are ordinary links: bookmarkable, and the back button
+    returns here. */
+const txnLink = (filters) => {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(filters)) if (v) params.set(k, v);
+  return `transactions.html?${params}`;
+};
 
 /** Colours for the spending breakdown, walked round the accent hue. */
 const swatchFor = (i) => `oklch(${0.62 - (i % 5) * 0.03} 0.075 ${195 + i * 26})`;
@@ -20,39 +21,6 @@ const swatchFor = (i) => `oklch(${0.62 - (i % 5) * 0.03} 0.075 ${195 + i * 26})`
 function greeting() {
   const h = new Date().getHours();
   return h < 12 ? 'Good morning.' : h < 18 ? 'Good afternoon.' : 'Good evening.';
-}
-
-async function api(path) {
-  const res = await fetch(`/api${path}`, { headers: { 'x-api-key': localStorage.getItem(KEY_STORE) || '' } });
-  if (res.status === 401 || res.status === 403) {
-    const err = new Error('unauthorized');
-    err.unauthorized = true;
-    throw err;
-  }
-  if (!res.ok) throw new Error(`${path} returned ${res.status}`);
-  return res.json();
-}
-
-/* --- the gate ------------------------------------------------------------- */
-
-function showGate(rejected) {
-  $('gate').hidden = false;
-  $('app').hidden = true;
-  $('gate-err').hidden = !rejected;
-  $('gate-key').focus();
-}
-
-function wireGate() {
-  const submit = () => {
-    const key = $('gate-key').value.trim();
-    if (!key) return;
-    localStorage.setItem(KEY_STORE, key);
-    $('gate').hidden = true;
-    $('app').hidden = false;
-    load();
-  };
-  $('gate-go').addEventListener('click', submit);
-  $('gate-key').addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
 }
 
 /* --- chart ---------------------------------------------------------------- */
@@ -201,7 +169,7 @@ function renderSpending(cf) {
     .map(
       (g, i) => `
       <div class="row">
-        <div><span class="swatch" style="background:${swatchFor(i)}"></span><span class="label">${g.group}</span>
+        <div><span class="swatch" style="background:${swatchFor(i)}"></span><a class="label" href="${txnLink({ group: g.group })}">${escapeHtml(g.group)}</a>
           <div class="sub" style="margin-left:14px">${g.transactions.toLocaleString('en-US')} transactions</div></div>
         <div><span class="v num">${money(g.total)}</span><span class="pct">${((Math.abs(g.total) / total) * 100).toFixed(1)}%</span></div>
       </div>`
@@ -262,7 +230,7 @@ function renderActivity(txns) {
           .map(
             (t) => `<tr>
             <td class="mono">${new Date(`${t.date}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}</td>
-            <td class="desc">${escapeHtml(t.merchant_raw || '').slice(0, 60)}</td>
+            <td class="desc"><a href="${txnLink({ search: (t.payee || t.merchant_raw || '').slice(0, 24) })}">${escapeHtml(t.payee || t.merchant_raw || '').slice(0, 60)}</a></td>
             <td>${t.category_group ? escapeHtml(t.category_group) : '<span style="color:var(--attn)">Uncategorised</span>'}</td>
             <td class="mono">${escapeHtml(t.account_nickname || t.account_name || '')}</td>
             <td class="amt num ${t.amount > 0 ? 'in' : ''}">${money(t.amount, { showPlus: true })}</td>
@@ -276,12 +244,16 @@ function renderActivity(txns) {
 function renderAttention(items) {
   $('attn-count').textContent = items.length ? `${items.length} item${items.length > 1 ? 's' : ''}` : 'nothing';
   $('attn').innerHTML = items.length
-    ? items.map((i) => `<div class="attn-item ${i.warn ? 'warn' : ''}"><span class="dot"></span><div><div class="t">${i.title}</div><div class="d">${i.detail}</div></div></div>`).join('')
+    ? items
+        .map((i) => {
+          const body = `<span class="dot"></span><div><div class="t">${escapeHtml(i.title)}</div><div class="d">${escapeHtml(i.detail)}</div></div>`;
+          return i.href
+            ? `<a class="attn-item ${i.warn ? 'warn' : ''}" href="${i.href}" style="color:inherit">${body}</a>`
+            : `<div class="attn-item ${i.warn ? 'warn' : ''}">${body}</div>`;
+        })
+        .join('')
     : '<div class="skeleton">Nothing needs attention.</div>';
 }
-
-const escapeHtml = (s) =>
-  String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 /* --- load ----------------------------------------------------------------- */
 
@@ -325,6 +297,27 @@ async function load() {
         title: `${cf.uncategorized_transactions} transactions uncategorised`,
         detail: 'They are excluded from the totals above until filed.',
         warn: true,
+        href: txnLink({ uncategorized: '1' }),
+      });
+    }
+
+    const needsReview = await api('/transactions?needs_review=1&limit=2000').catch(() => []);
+    if (needsReview.length) {
+      attention.push({
+        title: `${needsReview.length} low-confidence categories`,
+        detail: 'The categoriser was unsure about these and asked for a human.',
+        warn: true,
+        href: txnLink({ needs_review: '1' }),
+      });
+    }
+
+    const dupes = await api('/transactions?possible_duplicates=1&limit=2000').catch(() => []);
+    if (dupes.length) {
+      attention.push({
+        title: `${dupes.length} possible duplicates`,
+        detail: 'Flagged by the sync, never deleted automatically. Worth resolving.',
+        warn: true,
+        href: txnLink({ possible_duplicates: '1' }),
       });
     }
     for (const p of nw.properties) {
@@ -351,14 +344,8 @@ async function load() {
     $('foot').textContent = `synced ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`;
   } catch (err) {
     if (err.unauthorized) return showGate(true);
-    $('errors').innerHTML = `<div class="error"><strong>Couldn't load.</strong> ${escapeHtml(err.message)}</div>`;
+    showError(err.message);
   }
 }
 
-wireGate();
-if (localStorage.getItem(KEY_STORE)) {
-  $('app').hidden = false;
-  load();
-} else {
-  showGate(false);
-}
+startPage(load);

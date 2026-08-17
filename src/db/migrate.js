@@ -312,6 +312,33 @@ const MIGRATIONS = [
       return added;
     },
   },
+  {
+    version: 7,
+    name: 'transactions-categorized-by',
+    up(db) {
+      if (!tableExists(db, 'transactions')) return [];
+
+      // How a category got there: 'rule', 'ai', 'manual', or 'import'.
+      //
+      // Recorded rather than re-derived, because a rule that matched in
+      // February may not exist in August — asking "which rule matches this
+      // now?" would rewrite the past every time the rule set changed. It also
+      // could not distinguish a rule that matched from a human who happened to
+      // agree with it.
+      //
+      // The distinction is the whole point of the review screen: an AI guess
+      // that went wrong is one bad row, while a rule that went wrong is every
+      // future transaction from that merchant. Those need different fixes.
+      //
+      // NULL on the 2,565 rows that predate this, which is honest — nothing
+      // recorded how they were filed.
+      const added = [];
+      if (addColumnIfMissing(db, 'transactions', 'categorized_by', 'TEXT')) {
+        added.push('categorized_by');
+      }
+      return added;
+    },
+  },
 ];
 
 const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

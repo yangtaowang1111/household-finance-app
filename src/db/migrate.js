@@ -288,6 +288,30 @@ const MIGRATIONS = [
       return added;
     },
   },
+  {
+    version: 6,
+    name: 'accounts-secured-by',
+    up(db) {
+      if (!tableExists(db, 'accounts')) return [];
+
+      // Held on the LOAN row, pointing at the property that secures it — the
+      // direction the sentence runs ("this mortgage is secured by that house").
+      // It also degrades better than the reverse would: a property with no
+      // mortgage is simply unreferenced, and a second loan against the same
+      // property is another row pointing at it, which a single column on the
+      // property could not express.
+      //
+      // Nullable, because most accounts secure nothing and the pairing cannot be
+      // inferred — two mortgages and two properties have no shared field to join
+      // on, and guessing puts the wrong equity against the rental, which is the
+      // number that matters for Schedule E.
+      const added = [];
+      if (addColumnIfMissing(db, 'accounts', 'secured_by_account_id', 'INTEGER REFERENCES accounts(id)')) {
+        added.push('secured_by_account_id');
+      }
+      return added;
+    },
+  },
 ];
 
 const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

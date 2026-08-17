@@ -43,6 +43,49 @@ router.patch('/:id/balance', (req, res) => {
   res.json(db.prepare('SELECT * FROM accounts WHERE id = ?').get(req.params.id));
 });
 
+// Editable metadata — the fields a human owns and sync must never overwrite.
+// Balance is deliberately not among them: it belongs to PATCH /:id/balance,
+// which also records a snapshot so the change reaches the net worth history.
+const EDITABLE = ['nickname', 'owner', 'institution', 'secured_by_account_id', 'type'];
+
+router.patch('/:id', (req, res) => {
+  const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(req.params.id);
+  if (!account) return res.status(404).json({ error: 'account not found' });
+
+  const fields = Object.keys(req.body).filter((key) => EDITABLE.includes(key));
+  if (!fields.length) {
+    return res.status(400).json({ error: `nothing to update — editable fields are ${EDITABLE.join(', ')}` });
+  }
+
+  if (fields.includes('secured_by_account_id')) {
+    const target = req.body.secured_by_account_id;
+    if (target !== null) {
+      const property = db.prepare('SELECT id, type FROM accounts WHERE id = ?').get(target);
+      if (!property) return res.status(400).json({ error: 'secured_by_account_id does not exist' });
+      if (Number(target) === Number(req.params.id)) {
+        return res.status(400).json({ error: 'an account cannot secure itself' });
+      }
+      // Not enforced as a schema CHECK because the useful error is here, where
+      // it can name what was actually passed.
+      if (property.type !== 'property') {
+        return res.status(400).json({ error: `secured_by_account_id must be a property, not a ${property.type}` });
+      }
+    }
+  }
+
+  // A confirmed type outranks whatever sync inferred, so setting it by hand
+  // also marks it confirmed — otherwise the next sync would silently undo it.
+  const sets = fields.map((f) => `${f} = @${f}`);
+  if (fields.includes('type')) sets.push('type_confirmed = 1');
+
+  db.prepare(`UPDATE accounts SET ${sets.join(', ')} WHERE id = @id`).run({
+    ...Object.fromEntries(fields.map((f) => [f, req.body[f]])),
+    id: req.params.id,
+  });
+
+  res.json(db.prepare('SELECT * FROM accounts WHERE id = ?').get(req.params.id));
+});
+
 router.get('/:id/balance-history', (req, res) => {
   const account = db.prepare('SELECT id FROM accounts WHERE id = ?').get(req.params.id);
   if (!account) return res.status(404).json({ error: 'account not found' });

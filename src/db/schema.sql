@@ -24,6 +24,14 @@ CREATE TABLE IF NOT EXISTS accounts (
   -- unreliable for cards whose names carry no type keyword (e.g. "Chase Freedom").
   -- Sync never overwrites a confirmed type.
   type_confirmed INTEGER NOT NULL DEFAULT 0,
+  -- Set on a LOAN row, pointing at the property securing it — the direction the
+  -- sentence runs ("this mortgage is secured by that house"), and the one that
+  -- degrades properly: a property with no mortgage is simply unreferenced, and a
+  -- second loan against the same property is another row pointing at it.
+  -- Equity is then property.current_balance + mortgage.current_balance (the loan
+  -- is stored negative). Cannot be inferred — two mortgages and two properties
+  -- share no field to join on — so it stays NULL until a human sets it.
+  secured_by_account_id INTEGER REFERENCES accounts(id),
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

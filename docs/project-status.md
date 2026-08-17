@@ -545,7 +545,39 @@ the spending view as well. One error beats two.
 Effect on 2025: spending $220,132 → $207,132, saved $0 → $13,000, net unchanged
 at −$5,643 (the money left the account either way).
 
-**1c. Vanguard is not tracked, and it is the largest remaining data gap.** Two
+**1c. ✅ DONE 2026-08-17 — Vanguard is linked.** Three accounts, all typed
+`investment` with high confidence by the existing name matcher:
+
+| Account | Balance |
+|---|---|
+| Traditional IRA Brokerage (8271) | $0 |
+| Roth IRA Brokerage (2197) | $7,911.96 |
+| Joint Brokerage (3339) | $51,079.50 |
+
+Net worth **$981,793 → $1,039,847**.
+
+**Vanguard reports balances, not transactions.** The only rows it sends are
+money-market sweep pairs (−$0.01/+$0.01) that net to zero — no buys, no
+dividends, so there is no double-count risk from the brokerage side and growth
+tracking rests entirely on `account_balance_snapshots`. This is the clean case.
+
+First growth reading: **$59,003 contributed, $58,991 today, −$12.03 (−0.02%)**.
+That comparison is only honest because Vanguard is new in 2026, so every
+contribution is inside the data — it would badly overstate gains on an account
+with untracked history, where the cost basis is missing.
+
+**The Traditional IRA sits at $0 by design.** It is a backdoor Roth conduit:
+money enters as a non-deductible contribution and is converted straight out to
+the Roth, so the balance bounces $0 → ~$7,000 → $0 and rests at zero. Nothing is
+wrong when it reads zero. Both accounts being tracked means the conversion nets
+out on its own; because Vanguard sends no transactions, a conversion appears
+only as two balances moving in opposite directions. A snapshot caught mid-
+conversion could dip net worth for a day, which is transient and self-correcting.
+
+**1d. Still untracked:** Sophia's Vanguard IRAs (~$7,500 this year) — deferred by
+agreement, small enough not to move net worth materially.
+
+**Historical note — Vanguard was the largest data gap until today.** Two
 Roth IRAs and a joint investment account, all new in 2026. $61,500 of
 contributions left the tracked set in February with no asset on the other side,
 and `SOLIUM INC` paid in $78,299 (equity comp) in the same month. The brief puts

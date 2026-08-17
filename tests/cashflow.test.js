@@ -173,3 +173,17 @@ test('a fee charged inside the account is not household spending', () => {
 
   assert.equal(cashflow(WINDOW).spending, 100);
 });
+
+test('an uncategorized brokerage row is not reported as a gap', () => {
+  txn('2026-02-15', -100, 'GROCERY', 'Groceries');
+  const vanguard = investmentAccount();
+  db.prepare(
+    `INSERT INTO transactions (account_id, date, amount, merchant_raw, category_id, source)
+     VALUES (?, '2026-02-20', -0.01, 'VANGUARD FEDERAL MONEY MARKET INVESTOR C', NULL, 'simplefin')`
+  ).run(vanguard);
+
+  // Vanguard's sweep pairs will never be categorised, and shouldn't be: they
+  // are excluded from the totals, so counting them would report a permanent
+  // gap that no amount of work could close.
+  assert.equal(cashflow(WINDOW).uncategorized_transactions, 0);
+});

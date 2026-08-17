@@ -74,8 +74,16 @@ function cashflow({ from, to }) {
     else if (row.group_name === 'Savings & Investments') saved += -row.total;
   }
 
+  // Scoped the same way as the totals above. Counting brokerage rows here while
+  // excluding them from the sums would report "4 uncategorized" forever —
+  // Vanguard's money-market sweep pairs are never going to be categorised, and
+  // nothing is wrong with that.
   const uncategorized = db
-    .prepare('SELECT COUNT(*) AS n FROM transactions WHERE category_id IS NULL AND date >= ? AND date < ?')
+    .prepare(
+      `SELECT COUNT(*) AS n FROM transactions t
+       JOIN accounts a ON a.id = t.account_id
+       WHERE t.category_id IS NULL AND t.date >= ? AND t.date < ? AND a.type != 'investment'`
+    )
     .get(from, to).n;
 
   return {

@@ -11,6 +11,7 @@
     "backup": "node scripts/backup-db.js",
     "sync": "node scripts/daily-sync.js",
     "import:history": "node scripts/import-history.js",
+    "import:statements": "node scripts/import-statements.js",
     "test": "node --test \"tests/*.test.js\""
   },
   "dependencies": {

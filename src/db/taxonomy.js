@@ -71,11 +71,26 @@ const GROUPS = [
     children: ['Taxes', 'Professional Licenses', 'Insurance', 'Bank & Transfer Fees', 'Card Annual Fees'],
   },
   {
-    // Counts as spending, deliberately. Contributions are budgeted like a bill
-    // ("pay yourself first") — money that leaves the household's spendable pool
-    // even though it stays the household's asset. Treating it as neutral would
-    // make a month look affordable when the 529 payment had already claimed it.
+    // NOT spending, revised 2026-08-17. It was counted as spending on the
+    // "pay yourself first" argument — a contribution claims money just as a
+    // bill does, so a month shouldn't look affordable once the 529 payment has
+    // taken its share. That argument is about *budgeting* a contribution, which
+    // still works: budgets are per-category, so a monthly 529 or Roth target is
+    // set and tracked exactly like any other, independent of this flag.
+    //
+    // What the flag governs is whether an outflow counted as consumption, and a
+    // contribution isn't: it converts cash into an asset the household still
+    // owns, leaving net worth unchanged. Structurally it is a transfer, and once
+    // the destination is tracked it nets to zero against the receiving account
+    // the same way the Chase -> Ally moves do.
+    //
+    // The 2026 data forced the issue: $61,500 went to Vanguard in February.
+    // Counted as spending, that reads as a catastrophic month and a savings rate
+    // of zero. Net worth is understated by that amount either way until Vanguard
+    // is linked — so counting it as spending fixes nothing and corrupts the
+    // spending view too.
     name: 'Savings & Investments',
+    countsAsSpending: false,
     children: [
       { name: 'Retirement Contributions', bucket: 'retirement' },
       { name: 'Investment Contributions', bucket: 'investment' },

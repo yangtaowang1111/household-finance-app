@@ -524,6 +524,40 @@ cut down, so a clamp can't pass for a successful deep sync.
 Doing this first also shrinks step 2 — statements then only need to cover
 January to mid-May instead of the full year.
 
+**1b. Contributions are no longer counted as spending (revised 2026-08-17).**
+They were, on a "pay yourself first" argument: a contribution claims money just
+as a bill does. That argument is about *budgeting* a contribution, which still
+works — budgets are per-category and independent of the flag, so a monthly Roth
+or 529 target is set and tracked like any other.
+
+What `counts_as_spending` governs is whether an outflow was consumption, and a
+contribution isn't: it converts cash into an asset the household still owns, so
+net worth is unchanged. Structurally it is a transfer, and once the destination
+is tracked it nets to zero against the receiving account exactly as the
+Chase → Ally moves already do.
+
+The 2026 data forced it: **$61,500 went to Vanguard in February.** Counted as
+spending that reads as a catastrophic month and a savings rate of zero. The
+deciding argument is that net worth is understated by that money *either way*
+until Vanguard is linked — so counting it as spending fixes nothing and corrupts
+the spending view as well. One error beats two.
+
+Effect on 2025: spending $220,132 → $207,132, saved $0 → $13,000, net unchanged
+at −$5,643 (the money left the account either way).
+
+**1c. Vanguard is not tracked, and it is the largest remaining data gap.** Two
+Roth IRAs and a joint investment account, all new in 2026. $61,500 of
+contributions left the tracked set in February with no asset on the other side,
+and `SOLIUM INC` paid in $78,299 (equity comp) in the same month. The brief puts
+"net worth combining cash + investment balances" in scope, and the investment
+half does not exist yet. Options: link via SimpleFIN if it supports Vanguard, or
+hold it as a manual account updated quarterly like the two properties.
+
+**Watch the income figure meanwhile.** Jan–May 2026 income reads $162,233
+against a *full* 2025 of $214,489 — but $78,299 of that is the single Solium
+event, not a new baseline. Equity comp tracking is deliberately out of scope, so
+this needs a mental asterisk rather than a feature.
+
 **2. Fill the 2026 gap from bank statements — now 2026-01-01 → 2026-05-19.**
 The backfill shortened this from a full year to four and a half months. Agreed
 approach:

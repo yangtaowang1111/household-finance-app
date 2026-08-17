@@ -12,6 +12,7 @@ const budgetsRouter = require('./routes/budgets');
 const importRouter = require('./routes/import');
 const categorizeRouter = require('./routes/categorize');
 const syncRouter = require('./routes/sync');
+const cashflowRouter = require('./routes/cashflow');
 
 seedTaxonomy({ log: true });
 
@@ -29,6 +30,7 @@ app.use('/api/budgets', budgetsRouter);
 app.use('/api/import', importRouter);
 app.use('/api/categorize', categorizeRouter);
 app.use('/api/sync', syncRouter);
+app.use('/api/cashflow', cashflowRouter);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Household Finance API listening on port ${PORT}`));

@@ -65,7 +65,11 @@ test('money that moves without being spent is flagged, not just named', () => {
   assert.equal(flagOf('Bank Fee & Waiver'), 0);
   assert.equal(flagOf("Tony's Paycheck"), 0, 'income is tracked but is not spend');
   assert.equal(flagOf('Groceries'), 1);
-  assert.equal(flagOf('College Fund (529)'), 1, 'contributions are budgeted like a bill');
+  // Revised 2026-08-17: a contribution converts cash into an asset the household
+  // still owns, so it is not consumption. Budgeting one like a bill still works
+  // — budgets are per-category and independent of this flag.
+  assert.equal(flagOf('College Fund (529)'), 0, 'a contribution is not consumption');
+  assert.equal(flagOf('Investment Contributions'), 0);
 });
 
 test('inverted-sign cards are corrected on import', () => {

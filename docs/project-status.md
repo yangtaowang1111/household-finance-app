@@ -548,6 +548,19 @@ approach:
   and −$2,239.66 monthly). Importing both sides double-counts ~$5,200/month.
 - Set `--before` to whatever `MIN(date) WHERE source='simplefin'` reports after
   step 1, so the two sources meet without overlapping.
+- **Partial is fine — import what is reachable and finish later.** Decided
+  2026-08-16: several of Sophia's cards can't be downloaded right now, and
+  waiting for them would block Phase 4 for no benefit. Dedup is count-based on
+  account + date + amount + description, so a later run adds only what is new.
+  **Consequence to remember: Jan-May 2026 spending is understated until the
+  remaining statements land.** Fine for building a UI against; not a basis for
+  reading those months' budget-vs-actual.
+- **Sophia's four cards are an ongoing gap, not just a historical one.** They
+  were created as manual accounts during the 2025 import because they don't
+  sync, so they accumulate nothing and would need a manual import every month.
+  The durable fix is for her to add those cards to SimpleFIN Bridge under her
+  own login — her credentials stay with her, and the transactions then arrive on
+  the existing daily sync. Worth doing before household totals are relied on.
 - **A second importer is needed.** `historyImporter.js` expects the 2025
   sheet's shape (category, owner, notes columns). Raw statements need per-bank
   format handling and account assignment by filename — closer to

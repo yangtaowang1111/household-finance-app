@@ -16,6 +16,22 @@
 // Transfers appear in neither total. Both legs are real transactions, so they
 // cancel; including them would double-count in one direction and cancel to noise
 // in the other.
+//
+// Transactions ON investment accounts are excluded entirely, whatever category
+// they carry. Two reasons, and the first is a real double-count:
+//
+//   1. A contribution is already recorded once, as the outbound transfer from
+//      the cash account that funded it. If the brokerage also reports the
+//      matching buy, counting both books the same $30,000 twice.
+//   2. Dividends, reinvestments and realised gains inside an account are not
+//      household cash flow. Nothing was earned or spent until money actually
+//      leaves for a chequing account — and that withdrawal appears on the
+//      chequing side, where it is captured properly.
+//
+// So growth and loss never touch income or spending. They show up where they
+// belong: in the balance, and therefore in net worth, via the daily snapshots in
+// `account_balance_snapshots`. A market gain is not a transaction and must never
+// be made to look like one.
 
 const db = require('../db');
 
@@ -36,8 +52,10 @@ function cashflow({ from, to }) {
          ROUND(SUM(t.amount), 2) AS total
        FROM transactions t
        JOIN categories c ON c.id = t.category_id
+       JOIN accounts a ON a.id = t.account_id
        LEFT JOIN categories parent ON parent.id = c.parent_category_id
        WHERE t.date >= ? AND t.date < ?
+         AND a.type != 'investment'
        GROUP BY group_name
        ORDER BY ABS(SUM(t.amount)) DESC`
     )

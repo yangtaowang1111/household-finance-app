@@ -126,3 +126,50 @@ test('groups are reported with whether they counted as spending', () => {
   assert.equal(savings.counts_as_spending, false);
   assert.equal(food.counts_as_spending, true);
 });
+
+// --- investment accounts -----------------------------------------------------
+//
+// A brokerage reports its own internal activity. None of it is household cash
+// flow, and one piece of it is a live double-count risk: the contribution that
+// funded a buy was already recorded as the outbound transfer from chequing.
+
+function investmentAccount() {
+  return db
+    .prepare("INSERT INTO accounts (name, type, current_balance, source) VALUES ('Vanguard Roth IRA', 'investment', 0, 'simplefin')")
+    .run().lastInsertRowid;
+}
+
+function txnOn(account, date, amount, merchant, category) {
+  db.prepare(
+    `INSERT INTO transactions (account_id, date, amount, merchant_raw, category_id, source)
+     VALUES (?, ?, ?, ?, ?, 'simplefin')`
+  ).run(account, date, amount, merchant, categoryId(category));
+}
+
+test('a buy inside the brokerage does not double-count the contribution', () => {
+  // The cash side: $30,000 leaves chequing for Vanguard.
+  txn('2026-02-18', -30000, 'VANGUARD BUY INVESTMENT', 'Investment Contributions');
+  // The brokerage side: Vanguard reports the same money arriving and buying.
+  const vanguard = investmentAccount();
+  txnOn(vanguard, '2026-02-18', -30000, 'BUY VTSAX', 'Investment Contributions');
+
+  const r = cashflow(WINDOW);
+  assert.equal(r.saved, 30000, 'the contribution is counted once, not twice');
+});
+
+test('a dividend inside the account is not income', () => {
+  txn('2026-02-10', 5000, 'PAYROLL', "Tony's Paycheck");
+  const vanguard = investmentAccount();
+  txnOn(vanguard, '2026-02-20', 812.44, 'DIVIDEND RECEIVED', 'Interest & Dividends');
+
+  const r = cashflow(WINDOW);
+  assert.equal(r.income, 5000, 'nothing was earned until it leaves the account');
+});
+
+test('a fee charged inside the account is not household spending', () => {
+  txn('2026-02-15', -100, 'GROCERY', 'Groceries');
+  const vanguard = investmentAccount();
+  txnOn(vanguard, '2026-02-21', -35, 'ACCOUNT SERVICE FEE', 'Bank & Transfer Fees');
+
+  assert.equal(cashflow(WINDOW).spending, 100);
+});

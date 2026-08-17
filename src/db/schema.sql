@@ -86,6 +86,12 @@ CREATE TABLE IF NOT EXISTS transactions (
   -- exist in August. A wrong AI guess is one bad row; a wrong rule is every
   -- future transaction from that merchant, and they need different fixes.
   categorized_by TEXT,
+  -- Asks for a human, independently of `notes`. A note is something a person
+  -- wrote; this is a state the system is in. Set by a low-confidence AI guess,
+  -- or by a rule marked always_review — a Zelle rule can identify the sender
+  -- reliably and still not know whether the money was a gift, a repayment or
+  -- rent, because Chase does not pass the memo through.
+  needs_review INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -105,6 +111,9 @@ CREATE TABLE IF NOT EXISTS categorization_rules (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   merchant_pattern TEXT NOT NULL UNIQUE,
   category_id INTEGER NOT NULL REFERENCES categories(id),
+  -- Categorise, but still flag it. For merchants where the descriptor is enough
+  -- to guess but not enough to be sure.
+  always_review INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

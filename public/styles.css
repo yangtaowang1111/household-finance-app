@@ -489,3 +489,16 @@ tr.flagged td { background: var(--attn-soft); }
 
 td.pick { width: 26px; padding-right: 0; }
 td.pick input { accent-color: var(--accent); }
+
+/* One-click agreement with a flagged row. Quiet until hovered — most rows are
+   not flagged, and a bright tick on every line would read as an alert. */
+.confirm {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  padding: 1px 6px;
+  font-size: 11px;
+  border-radius: 4px;
+  margin-left: 6px;
+}
+.confirm:hover { background: var(--pos); color: var(--surface); border-color: var(--pos); filter: none; }

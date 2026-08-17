@@ -111,12 +111,25 @@ function render() {
   $('list').querySelectorAll('[data-edit]').forEach((btn) => {
     btn.addEventListener('click', () => openEditor(Number(btn.dataset.edit)));
   });
+
+  // Most of a review pass is agreeing with what is already there, so agreeing
+  // is one click and does not reopen the dialog.
+  $('list').querySelectorAll('[data-confirm]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      try {
+        await api(`/transactions/${btn.dataset.confirm}/confirm`, { method: 'PATCH' });
+        await load();
+      } catch (err) {
+        toast(`Couldn't confirm: ${err.message}`);
+      }
+    });
+  });
 }
 
 function renderRow(t) {
   const prov = t.categorized_by && PROVENANCE[t.categorized_by];
-  const flagged = t.possible_duplicate_of || /^AI confidence: low/.test(t.notes || '');
-  const note = t.notes && !/^AI confidence: low/.test(t.notes) ? t.notes : null;
+  const flagged = t.possible_duplicate_of || t.needs_review;
+  const note = t.notes || null;
 
   return `<tr class="${flagged ? 'flagged' : ''}">
     <td class="pick"><input type="checkbox" data-pick="${t.id}" ${selected.has(t.id) ? 'checked' : ''} aria-label="Select"></td>
@@ -131,6 +144,7 @@ function renderRow(t) {
         ${t.category_name ? escapeHtml(t.category_name) : 'Uncategorised'}
       </button>
       ${prov ? `<span class="prov ${t.categorized_by}" title="${escapeHtml(prov[1])}">${prov[0]}</span>` : ''}
+      ${t.needs_review && t.category_id ? `<button class="confirm" data-confirm="${t.id}" title="Accept this category and clear the flag">&#10003;</button>` : ''}
     </td>
     <td class="mono">${escapeHtml(t.account_nickname || t.account_name || '')}</td>
     <td class="amt num ${t.amount > 0 ? 'in' : ''}">${money(t.amount, { showPlus: true, cents: true })}</td>
@@ -163,6 +177,22 @@ function categoryOptions(selectedId) {
     .join('');
 }
 
+/* A first guess at the part of a descriptor that repeats.
+   "Zelle payment from XINPEI FU 30139262629" -> "Zelle payment from XINPEI FU"
+   Trailing reference numbers and card ids are per-transaction, so a pattern
+   keeping them matches exactly one row and never fires again. Offered for
+   editing rather than applied silently: no heuristic knows which half of a
+   descriptor identifies the counterparty. */
+function suggestPattern(t) {
+  const source = t.merchant_raw || t.payee || '';
+  const trimmed = source
+    .replace(/\s+[A-Z0-9]{8,}\s*$/i, '')
+    .replace(/\s+\d{6,}\s*$/, '')
+    .replace(/[\s*#-]+$/, '')
+    .trim();
+  return trimmed || source;
+}
+
 function closeEditor() {
   $('editor').hidden = true;
   editing = null;
@@ -175,8 +205,11 @@ function openEditor(id) {
   $('ed-what').textContent = editing.payee || editing.merchant_raw || `Transaction #${editing.id}`;
   $('ed-meta').textContent = `${shortDate(editing.date)} · ${money(editing.amount, { cents: true, showPlus: true })} · ${editing.account_nickname || editing.account_name}`;
   $('ed-cat').innerHTML = categoryOptions(editing.category_id);
-  $('ed-note').value = editing.notes && !/^AI confidence: low/.test(editing.notes) ? editing.notes : '';
+  $('ed-note').value = editing.notes || '';
   $('ed-learn').checked = false;
+  $('ed-review').checked = false;
+  $('ed-pattern').value = suggestPattern(editing);
+  $('ed-rule').hidden = true;
   updateLearnHint();
   $('editor').hidden = false;
   $('ed-cat').focus();
@@ -188,20 +221,29 @@ function openEditor(id) {
 async function updateLearnHint() {
   const hint = $('ed-learn-hint');
   if (!editing) return;
-  if (!$('ed-learn').checked) {
-    hint.textContent = 'Off: only this transaction changes.';
+
+  const learning = $('ed-learn').checked;
+  $('ed-rule').hidden = !learning;
+  if (!learning) return;
+
+  const pattern = $('ed-pattern').value.trim();
+  if (pattern.length < 4) {
+    hint.textContent = 'Too short to be safe — at least 4 characters.';
     return;
   }
-  const pattern = editing.payee || editing.merchant_raw || '';
-  hint.textContent = 'Checking what else this would match…';
+
+  // Says out loud what the rule would catch. A rule runs ahead of the
+  // categoriser on every future import, so "77 transactions match this" is the
+  // difference between a shortcut and a silent mess.
+  hint.textContent = 'Checking what else this matches…';
   try {
-    const matches = await api(`/transactions/matching?pattern=${encodeURIComponent(pattern.slice(0, 40))}`);
+    const matches = await api(`/transactions/matching?pattern=${encodeURIComponent(pattern)}`);
     const others = matches.filter((m) => m.id !== editing.id).length;
-    hint.textContent = others
-      ? `Will also catch ${others} existing transaction${others > 1 ? 's' : ''} matching "${pattern.slice(0, 30)}" in future imports.`
-      : `Future transactions matching "${pattern.slice(0, 30)}" will use this category.`;
+    hint.innerHTML = others
+      ? `Matches <strong>${others}</strong> other existing transaction${others > 1 ? 's' : ''}, and future ones.`
+      : 'Matches no other existing transactions — only future ones.';
   } catch {
-    hint.textContent = 'Future transactions from this merchant will use this category.';
+    hint.textContent = 'Future transactions matching this will use the category.';
   }
 }
 
@@ -214,12 +256,18 @@ async function saveEdit() {
   try {
     const updated = await api(`/transactions/${editing.id}/category`, {
       method: 'PATCH',
-      body: { category_id: categoryId, learn_rule: learn, notes: note || null },
+      body: {
+        category_id: categoryId,
+        learn_rule: learn,
+        rule_pattern: learn ? $('ed-pattern').value.trim() : undefined,
+        rule_always_review: learn && $('ed-review').checked,
+        notes: note || null,
+      },
     });
     closeEditor();
     toast(
       updated.rule_learned
-        ? `Recategorised, and future ones will follow.`
+        ? `Recategorised. Rule saved for "${updated.rule_learned.merchant_pattern}"${updated.rule_learned.always_review ? ', still flagged' : ''}.`
         : 'Recategorised.'
     );
     await load();
@@ -329,6 +377,11 @@ function wire() {
   $('ed-cancel').addEventListener('click', closeEditor);
   $('ed-save').addEventListener('click', saveEdit);
   $('ed-learn').addEventListener('change', updateLearnHint);
+  let patternDebounce;
+  $('ed-pattern').addEventListener('input', () => {
+    clearTimeout(patternDebounce);
+    patternDebounce = setTimeout(updateLearnHint, 300);
+  });
   $('editor').addEventListener('click', (e) => { if (e.target.id === 'editor') closeEditor(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeEditor(); });
 

@@ -46,7 +46,7 @@ router.get('/', (req, res) => {
     clauses.push('t.category_id IS NULL');
   }
   if (needs_review !== undefined && needs_review !== '0' && needs_review !== 'false') {
-    clauses.push("t.notes LIKE 'AI confidence: low%'");
+    clauses.push('t.needs_review = 1');
   }
   if (min_amount) {
     // On absolute value: "everything over $1,000" means large in either
@@ -157,7 +157,7 @@ router.patch('/bulk/category', (req, res) => {
 // A manual correction also clears the low-confidence note. That note is a
 // request for a human to look, and a human just looked.
 router.patch('/:id/category', (req, res) => {
-  const { category_id, learn_rule = false, notes } = req.body;
+  const { category_id, learn_rule = false, notes, rule_pattern, rule_always_review = false } = req.body;
   if (!category_id) return res.status(400).json({ error: 'category_id is required' });
 
   const txn = db.prepare('SELECT * FROM transactions WHERE id = ?').get(req.params.id);
@@ -166,27 +166,36 @@ router.patch('/:id/category', (req, res) => {
   const category = db.prepare('SELECT id, name FROM categories WHERE id = ?').get(category_id);
   if (!category) return res.status(400).json({ error: 'category_id does not exist' });
 
-  const clearsReviewNote = /^AI confidence: low/.test(txn.notes || '');
-  const nextNotes = notes !== undefined ? notes : clearsReviewNote ? null : txn.notes;
+  const nextNotes = notes !== undefined ? notes : txn.notes;
 
   let rule = null;
   const result = db.transaction(() => {
+    // A human just decided, so the review flag is cleared whatever set it.
     db.prepare(
-      "UPDATE transactions SET category_id = ?, notes = ?, categorized_by = 'manual' WHERE id = ?"
+      "UPDATE transactions SET category_id = ?, notes = ?, categorized_by = 'manual', needs_review = 0 WHERE id = ?"
     ).run(category_id, nextNotes, req.params.id);
 
     if (learn_rule) {
-      // Same pattern source the categorizer learns from: the cleaned payee when
-      // there is one, else the raw descriptor. A pattern shorter than four
-      // characters would match half the ledger.
-      const pattern = rulePatternFor(txn);
-      if (pattern && pattern.length >= 4) {
+      // An explicit pattern beats the derived one. It has to: the derived
+      // pattern for a Zelle transfer includes the per-transaction reference
+      // ("Zelle payment from XINPEI FU 30139262629"), so a rule built from it
+      // matches exactly one row and never fires again. Only a person knows that
+      // the part worth keeping is the name.
+      const pattern = (rule_pattern || rulePatternFor(txn) || '').trim();
+      if (pattern.length >= 4) {
         db.prepare(
-          `INSERT INTO categorization_rules (merchant_pattern, category_id)
-           VALUES (?, ?)
-           ON CONFLICT(merchant_pattern) DO UPDATE SET category_id = excluded.category_id`
-        ).run(pattern, category_id);
-        rule = { merchant_pattern: pattern, category_id, category_name: category.name };
+          `INSERT INTO categorization_rules (merchant_pattern, category_id, always_review)
+           VALUES (?, ?, ?)
+           ON CONFLICT(merchant_pattern) DO UPDATE SET
+             category_id = excluded.category_id,
+             always_review = excluded.always_review`
+        ).run(pattern, category_id, rule_always_review ? 1 : 0);
+        rule = {
+          merchant_pattern: pattern,
+          category_id,
+          category_name: category.name,
+          always_review: Boolean(rule_always_review),
+        };
       }
     }
     return db.prepare('SELECT * FROM transactions WHERE id = ?').get(req.params.id);
@@ -196,6 +205,17 @@ router.patch('/:id/category', (req, res) => {
   // it — a rule created by accident is otherwise invisible until it misfiles
   // something months later.
   res.json({ ...result, rule_learned: rule });
+});
+
+// Accepts the category as it stands and takes the row off the review queue.
+// Most of a review pass is agreeing with what is already there, and making that
+// require re-picking the same category would be busywork.
+router.patch('/:id/confirm', (req, res) => {
+  const result = db
+    .prepare("UPDATE transactions SET needs_review = 0, categorized_by = 'manual' WHERE id = ?")
+    .run(req.params.id);
+  if (result.changes === 0) return res.status(404).json({ error: 'transaction not found' });
+  res.json(db.prepare('SELECT * FROM transactions WHERE id = ?').get(req.params.id));
 });
 
 // Everything a given rule would catch. Answers "what else does this affect?"

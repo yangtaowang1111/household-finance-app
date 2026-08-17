@@ -339,6 +339,49 @@ const MIGRATIONS = [
       return added;
     },
   },
+  {
+    version: 8,
+    name: 'review-flag-and-always-review-rules',
+    up(db) {
+      const added = [];
+      if (!tableExists(db, 'transactions')) return added;
+
+      // A real flag instead of a string match on `notes`.
+      //
+      // The review queue was previously found with `notes LIKE 'AI confidence:
+      // low%'`, which conflates two different things: a note is something a
+      // human wrote about a transaction, and a review flag is a state the
+      // system is in. Writing the flag into the note meant a user note could
+      // never coexist with a flag, and any note starting with those words would
+      // masquerade as one.
+      if (addColumnIfMissing(db, 'transactions', 'needs_review', 'INTEGER NOT NULL DEFAULT 0')) {
+        added.push('needs_review');
+
+        // Move the existing queue across, then drop the synthetic notes — they
+        // were never user content and now say nothing the flag doesn't.
+        const moved = db
+          .prepare("UPDATE transactions SET needs_review = 1 WHERE notes LIKE 'AI confidence: low%'")
+          .run().changes;
+        db.prepare("UPDATE transactions SET notes = NULL WHERE notes LIKE 'AI confidence: low%'").run();
+        if (moved) added.push(`migrated ${moved} flagged transactions off notes`);
+      }
+
+      if (!tableExists(db, 'categorization_rules')) return added;
+
+      // Rules that categorise but still ask for a human.
+      //
+      // Zelle is the case that needs it: the descriptor identifies the sender,
+      // so a rule can file "Zelle payment from XINPEI FU" reliably, but whether
+      // a given transfer is a gift, a repayment or rent is not in the data at
+      // all — Chase does not pass the memo through. A rule can therefore get it
+      // mostly right and still be wrong, which is exactly when a category
+      // should arrive pre-filled rather than trusted.
+      if (addColumnIfMissing(db, 'categorization_rules', 'always_review', 'INTEGER NOT NULL DEFAULT 0')) {
+        added.push('always_review');
+      }
+      return added;
+    },
+  },
 ];
 
 const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

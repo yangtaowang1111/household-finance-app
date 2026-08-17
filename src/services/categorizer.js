@@ -52,8 +52,26 @@ function findRuleMatch(rules, txn) {
 // chain costs another API call. Prefer the payee; fall back to the descriptor
 // for CSV and manual rows, which have no payee.
 function rulePatternFor(txn) {
-  return (txn && (txn.payee || txn.merchant_raw)) || null;
+  if (!txn) return null;
+
+  // Usually the payee generalises better. But SimpleFIN sometimes reduces it to
+  // a bare product name that identifies nothing — an incoming Chase Zelle
+  // arrives with payee "Zelle Transfer" while the descriptor still carries
+  // "Zelle payment from XINPEI FU". Learning from the payee there would write a
+  // rule matching every Zelle transaction in the ledger.
+  //
+  // So a payee is only preferred when it says more than the generic label does.
+  // This is a guard, not a substitute for reading the pattern before saving it:
+  // the editor shows it and lets it be changed, because no heuristic knows
+  // which part of a descriptor is the part that repeats.
+  const payee = txn.payee || '';
+  const descriptor = txn.merchant_raw || '';
+  if (payee && GENERIC_PAYEES.test(payee.trim())) return descriptor || payee || null;
+  return payee || descriptor || null;
 }
+
+// Payees that name a payment rail rather than a counterparty.
+const GENERIC_PAYEES = /^(zelle transfer|quickpay|ach (debit|credit)|online transfer|external transfer|wire transfer|check|atm withdrawal)$/i;
 
 function chunk(array, size) {
   const out = [];
@@ -149,7 +167,7 @@ async function categorizeUncategorized(limit = DEFAULT_LIMIT) {
   const cappedLimit = Math.max(1, Math.min(requested, MAX_LIMIT));
   const categories = db.prepare('SELECT id, name, bucket FROM categories').all();
   const rules = db.prepare(`
-    SELECT cr.merchant_pattern, c.id AS category_id, c.name
+    SELECT cr.merchant_pattern, cr.always_review, c.id AS category_id, c.name
     FROM categorization_rules cr JOIN categories c ON c.id = cr.category_id
   `).all();
   const uncategorized = db.prepare(`
@@ -164,13 +182,15 @@ async function categorizeUncategorized(limit = DEFAULT_LIMIT) {
   // one bad row; a wrong rule is every future transaction from that merchant.
   // The review screen cannot tell those apart without this.
   const updateByRule = db.prepare(
-    "UPDATE transactions SET category_id = ?, categorized_by = 'rule' WHERE id = ?"
+    "UPDATE transactions SET category_id = ?, categorized_by = 'rule', needs_review = ? WHERE id = ?"
   );
   const updateByAi = db.prepare(
-    "UPDATE transactions SET category_id = ?, categorized_by = 'ai' WHERE id = ?"
+    "UPDATE transactions SET category_id = ?, categorized_by = 'ai', needs_review = 0 WHERE id = ?"
   );
-  const updateByAiWithNote = db.prepare(
-    "UPDATE transactions SET category_id = ?, notes = ?, categorized_by = 'ai' WHERE id = ?"
+  // Low confidence sets the flag rather than writing a sentence into `notes`.
+  // Notes belong to the user; this is a state the system is in.
+  const updateByAiUnsure = db.prepare(
+    "UPDATE transactions SET category_id = ?, categorized_by = 'ai', needs_review = 1 WHERE id = ?"
   );
   const upsertRule = db.prepare(`
     INSERT INTO categorization_rules (merchant_pattern, category_id)
@@ -183,7 +203,7 @@ async function categorizeUncategorized(limit = DEFAULT_LIMIT) {
   for (const txn of uncategorized) {
     const rule = findRuleMatch(rules, txn);
     if (rule) {
-      updateByRule.run(rule.category_id, txn.id);
+      updateByRule.run(rule.category_id, rule.always_review ? 1 : 0, txn.id);
       ruleMatched += 1;
     } else {
       remaining.push(txn);
@@ -216,7 +236,7 @@ async function categorizeUncategorized(limit = DEFAULT_LIMIT) {
     for (const result of results) {
       if (!result.category) continue;
       if (result.confidence === 'low') {
-        updateByAiWithNote.run(result.category.id, 'AI confidence: low — please review', result.id);
+        updateByAiUnsure.run(result.category.id, result.id);
         needsReview += 1;
       } else {
         updateByAi.run(result.category.id, result.id);

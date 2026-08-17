@@ -57,13 +57,13 @@ test.after(() => {
 });
 
 function txn(fields = {}) {
-  const { merchant = 'PGA TOUR SUPERSTORE', payee = null, notes = null, category = null } = fields;
+  const { merchant = 'PGA TOUR SUPERSTORE', payee = null, notes = null, category = null, review = 0 } = fields;
   return db
     .prepare(
-      `INSERT INTO transactions (account_id, date, amount, merchant_raw, payee, notes, category_id, source)
-       VALUES (?, '2026-02-10', -53.61, ?, ?, ?, ?, 'simplefin')`
+      `INSERT INTO transactions (account_id, date, amount, merchant_raw, payee, notes, category_id, needs_review, source)
+       VALUES (?, '2026-02-10', -53.61, ?, ?, ?, ?, ?, 'simplefin')`
     )
-    .run(accountId, merchant, payee, notes, category ? categoryId(category) : null).lastInsertRowid;
+    .run(accountId, merchant, payee, notes, category ? categoryId(category) : null, review).lastInsertRowid;
 }
 
 test('a correction without learn_rule leaves the rule set alone', async () => {
@@ -101,11 +101,11 @@ test('correcting the same merchant again replaces the rule rather than duplicati
   assert.equal(rules[0].category_id, categoryId('Shopping'));
 });
 
-test('a manual correction clears the low-confidence note', async () => {
-  const id = txn({ notes: 'AI confidence: low — please review', category: 'Shopping' });
+test('a manual correction clears the review flag', async () => {
+  const id = txn({ review: 1, category: 'Shopping' });
   const r = await call('PATCH', `/api/transactions/${id}/category`, { category_id: categoryId('Golf Gear') });
 
-  assert.equal(r.body.notes, null, 'the note asked a human to look, and one just did');
+  assert.equal(r.body.needs_review, 0, 'the flag asked a human to look, and one just did');
 });
 
 test('a note the user wrote is not clobbered by a correction', async () => {
@@ -202,13 +202,13 @@ test('uncategorized filter finds only unfiled rows', async () => {
   assert.equal(r.body[0].category_id, null);
 });
 
-test('needs_review filter finds the low-confidence queue', async () => {
-  txn({ notes: 'AI confidence: low — please review', category: 'Shopping' });
+test('needs_review filter finds the review queue', async () => {
+  txn({ review: 1, category: 'Shopping' });
   txn({ notes: 'Birthday present', category: 'Gifts' });
 
   const r = await call('GET', '/api/transactions?needs_review=1');
   assert.equal(r.body.length, 1);
-  assert.match(r.body[0].notes, /^AI confidence: low/);
+  assert.equal(r.body[0].needs_review, 1);
 });
 
 test('min_amount works on absolute value, so big credits are found too', async () => {
@@ -237,4 +237,71 @@ test('filters combine rather than replace each other', async () => {
   const r = await call('GET', '/api/transactions?search=whole&uncategorized=1');
   assert.equal(r.body.length, 1, 'both conditions apply, not the last one');
   assert.equal(r.body[0].category_id, null);
+});
+
+// --- rules that a person shapes ---------------------------------------------
+
+test('an explicit rule pattern beats the derived one', async () => {
+  // The derived pattern carries the per-transaction reference, so a rule built
+  // from it matches exactly one row and never fires again. Only a person knows
+  // the part worth keeping is the name.
+  const id = txn({ merchant: 'Zelle payment from XINPEI FU 30139262629', payee: 'Zelle Transfer' });
+
+  const r = await call('PATCH', `/api/transactions/${id}/category`, {
+    category_id: categoryId('Rental Income'),
+    learn_rule: true,
+    rule_pattern: 'Zelle payment from XINPEI FU',
+  });
+
+  assert.equal(r.body.rule_learned.merchant_pattern, 'Zelle payment from XINPEI FU');
+});
+
+test('a generic payee is not used as a rule pattern', async () => {
+  // SimpleFIN reduces an incoming Chase Zelle to payee "Zelle Transfer". A rule
+  // on that string would swallow every Zelle transaction in the ledger.
+  const id = txn({ merchant: 'Zelle payment from XINPEI FU 30139262629', payee: 'Zelle Transfer' });
+
+  const r = await call('PATCH', `/api/transactions/${id}/category`, {
+    category_id: categoryId('Rental Income'),
+    learn_rule: true,
+  });
+
+  assert.notEqual(r.body.rule_learned.merchant_pattern, 'Zelle Transfer');
+  assert.match(r.body.rule_learned.merchant_pattern, /XINPEI FU/);
+});
+
+test('a rule can categorise and still ask for review', async () => {
+  const id = txn({ merchant: 'Zelle payment to Da Dao 30179022977' });
+
+  const r = await call('PATCH', `/api/transactions/${id}/category`, {
+    category_id: categoryId('Family Support'),
+    learn_rule: true,
+    rule_pattern: 'Zelle payment to Da Dao',
+    rule_always_review: true,
+  });
+
+  assert.equal(r.body.rule_learned.always_review, true);
+  const rule = db.prepare('SELECT always_review FROM categorization_rules').get();
+  assert.equal(rule.always_review, 1);
+});
+
+test('confirming accepts the category and clears the flag', async () => {
+  const id = txn({ review: 1, category: 'Groceries' });
+  const r = await call('PATCH', `/api/transactions/${id}/confirm`);
+
+  assert.equal(r.body.needs_review, 0);
+  assert.equal(r.body.category_id, categoryId('Groceries'), 'the category is untouched');
+  assert.equal(r.body.categorized_by, 'manual');
+});
+
+test('a pattern too short to be safe is not stored', async () => {
+  const id = txn({});
+  const r = await call('PATCH', `/api/transactions/${id}/category`, {
+    category_id: categoryId('Groceries'),
+    learn_rule: true,
+    rule_pattern: 'ab',
+  });
+
+  assert.equal(r.body.rule_learned, null);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM categorization_rules').get().n, 0);
 });

@@ -97,9 +97,23 @@
 
     <label class="check" style="margin:12px 0 4px">
       <input type="checkbox" id="ed-learn">
-      <span>Also apply to future transactions from this merchant</span>
+      <span>Also apply to future transactions like this</span>
     </label>
-    <p class="note" style="margin:0 0 14px 24px" id="ed-learn-hint"></p>
+
+    <div id="ed-rule" hidden style="margin:8px 0 4px 24px">
+      <label class="field" style="margin-bottom:6px">
+        <span>Match when the description contains</span>
+        <input id="ed-pattern" type="text" spellcheck="false">
+      </label>
+      <p class="note" style="margin:0 0 8px" id="ed-learn-hint"></p>
+      <label class="check">
+        <input type="checkbox" id="ed-review">
+        <span>Still flag these for review</span>
+      </label>
+      <p class="note" style="margin:2px 0 0 24px">
+        For senders whose name identifies them but not what the money was for.
+      </p>
+    </div>
 
     <div style="display:flex;gap:8px">
       <button id="ed-save">Save</button>

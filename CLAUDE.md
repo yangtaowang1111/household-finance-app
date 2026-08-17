@@ -61,7 +61,7 @@ Implemented in [src/db/schema.sql](src/db/schema.sql), with [src/db/migrate.js](
 
 ## Phased build order
 
-### Phase 1 — Core (no bank connection yet) — IN PROGRESS
+### Phase 1 — Core (no bank connection yet) — DONE
 
 - [x] Repo, Node/Express backend, SQLite schema
 - [x] CSV/statement importer (`src/services/importer.js`, `POST /api/import`)

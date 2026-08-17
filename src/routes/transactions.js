@@ -32,7 +32,32 @@ router.get('/', (req, res) => {
   }
 
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
-  const rows = db.prepare(`SELECT * FROM transactions ${where} ORDER BY date DESC`).all(...params);
+
+  // Clamped at both ends: SQLite reads a negative LIMIT as "no limit", so
+  // ?limit=-1 would otherwise return all 2,500+ rows to a caller asking for a
+  // short list. The default is generous but finite.
+  const limit = Math.max(1, Math.min(Number(req.query.limit) || 500, 2000));
+
+  // Joined rather than left to the caller: every consumer of this list needs the
+  // account and category names, and resolving them client-side means three
+  // requests and a join in the browser for what SQLite does here for free.
+  const rows = db
+    .prepare(
+      `SELECT t.*,
+              a.name AS account_name,
+              a.nickname AS account_nickname,
+              c.name AS category_name,
+              COALESCE(parent.name, c.name) AS category_group
+       FROM transactions t
+       JOIN accounts a ON a.id = t.account_id
+       LEFT JOIN categories c ON c.id = t.category_id
+       LEFT JOIN categories parent ON parent.id = c.parent_category_id
+       ${where.replace(/\b(account_id|category_id|date|pending|possible_duplicate_of)\b/g, 't.$1')}
+       ORDER BY t.date DESC, t.id DESC
+       LIMIT ?`
+    )
+    .all(...params, limit);
+
   res.json(rows);
 });
 

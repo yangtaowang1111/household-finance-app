@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ledger — Household</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='4' fill='%234a9ba5'/></svg>">
+</head>
+<body>
+
+<!-- The API is key-protected, and a browser cannot put a header on a document
+     request, so the key is asked for once and kept in localStorage. Enough for
+     a single household behind Tailscale; a real session belongs with the rest
+     of Phase 4's auth. -->
+<div id="gate" class="gate" hidden>
+  <div class="card">
+    <div class="eyebrow">Ledger</div>
+    <h1 style="margin:6px 0 2px;font-size:17px">Enter API key</h1>
+    <p style="color:var(--muted);font-size:12px;margin:0">Stored in this browser only. It's the <code>API_KEY</code> from your <code>.env</code>.</p>
+    <input id="gate-key" type="password" autocomplete="off" spellcheck="false" placeholder="API key">
+    <button id="gate-go">Unlock</button>
+    <p id="gate-err" class="delta down" style="font-size:12px" hidden>That key was rejected.</p>
+  </div>
+</div>
+
+<div class="shell" id="app" hidden>
+  <nav class="sidebar">
+    <div class="brand">
+      <span class="brand-mark"></span>
+      <span>Ledger</span>
+      <span class="badge">self-hosted</span>
+    </div>
+    <a class="nav-item" href="#" aria-current="page">Overview</a>
+    <a class="nav-item" href="#"><span>Transactions</span><span class="count" id="nav-txns">—</span></a>
+    <a class="nav-item" href="#">Spending</a>
+    <a class="nav-item" href="#"><span>Accounts</span><span class="count" id="nav-accts">—</span></a>
+    <a class="nav-item" href="#">Investments</a>
+    <a class="nav-item" href="#"><span>Property</span><span class="count" id="nav-props">—</span></a>
+    <a class="nav-item" href="#">Rules &amp; imports</a>
+    <div class="sidebar-foot" id="foot">—</div>
+  </nav>
+
+  <main class="main">
+    <div id="errors"></div>
+
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">Overview</div>
+        <h1 id="greeting">Good morning.</h1>
+      </div>
+    </div>
+
+    <div class="stack">
+
+      <!-- net worth -->
+      <section class="card">
+        <div class="networth-top">
+          <div>
+            <div class="eyebrow">Net worth</div>
+            <div class="hero-row">
+              <div class="hero num" id="nw-total">—</div>
+              <div class="delta" id="nw-delta"></div>
+            </div>
+            <div class="chips" id="nw-chips"></div>
+          </div>
+          <div style="display:flex;gap:28px">
+            <div class="side-stat">
+              <div class="v num" id="nw-assets">—</div>
+              <div class="l">Assets</div>
+              <div class="l" id="nw-assets-sub"></div>
+            </div>
+            <div class="side-stat">
+              <div class="v num" id="nw-liabs">—</div>
+              <div class="l">Liabilities</div>
+              <div class="l" id="nw-liabs-sub"></div>
+            </div>
+          </div>
+        </div>
+        <p class="note">Market movement and property revaluations change net worth only — they are never counted as income.</p>
+        <div class="chart" id="nw-chart"></div>
+      </section>
+
+      <div class="grid-2">
+        <!-- this period -->
+        <section class="card">
+          <div class="card-head">
+            <span class="eyebrow" id="cf-title">This year</span>
+          </div>
+          <div id="cf-rows"><div class="skeleton">Loading…</div></div>
+        </section>
+
+        <!-- attention -->
+        <section class="card">
+          <div class="card-head">
+            <span class="eyebrow">Worth a look</span>
+            <span class="pct" id="attn-count"></span>
+          </div>
+          <div id="attn"><div class="skeleton">Loading…</div></div>
+          <p class="note">Only things that need a person show up here. Spending on its own never does.</p>
+        </section>
+      </div>
+
+      <!-- spending -->
+      <section class="card">
+        <div class="card-head">
+          <span class="eyebrow">Where it went</span>
+          <span class="pct" id="spend-sub"></span>
+        </div>
+        <div id="spend"><div class="skeleton">Loading…</div></div>
+      </section>
+
+      <div class="grid-2">
+        <!-- accounts -->
+        <section class="card">
+          <div class="card-head"><span class="eyebrow">Accounts</span></div>
+          <div id="accounts"><div class="skeleton">Loading…</div></div>
+        </section>
+
+        <!-- property -->
+        <section class="card">
+          <div class="card-head"><span class="eyebrow">Property · manual valuations</span></div>
+          <div id="property"><div class="skeleton">Loading…</div></div>
+        </section>
+      </div>
+
+      <!-- activity -->
+      <section class="card">
+        <div class="card-head">
+          <span class="eyebrow">Latest activity</span>
+          <span class="pct" id="activity-sub"></span>
+        </div>
+        <div class="table-wrap" id="activity"><div class="skeleton">Loading…</div></div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

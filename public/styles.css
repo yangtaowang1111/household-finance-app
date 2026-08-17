@@ -1,0 +1,346 @@
+/* Design tokens taken from the Claude Design pass (data/design/), which used
+   OKLCH throughout. Kept in OKLCH deliberately: the accent stays perceptually
+   even across the light and dark sets, which the same colours in hex would not.
+
+   Fonts are a system stack rather than the design's Instrument Sans and
+   JetBrains Mono. This page is served from the NAS to a household behind
+   Tailscale — pulling webfonts from Google on every load would add an external
+   request, a privacy leak, and a failure mode when the NAS has no route out.
+   `tabular-nums` recovers the thing the mono font was actually there for:
+   figures that line up in a column. */
+
+:root {
+  --bg: oklch(0.976 0.006 85);
+  --surface: oklch(1 0 0);
+  --text: oklch(0.28 0.012 60);
+  --muted: oklch(0.55 0.012 60);
+  --line: oklch(0.898 0.008 85);
+  --line-soft: oklch(0.945 0.007 85);
+  --accent: oklch(0.58 0.075 195);
+  --accent-soft: oklch(0.935 0.022 195);
+  --pos: oklch(0.545 0.075 155);
+  --attn: oklch(0.595 0.110 45);
+  --attn-soft: oklch(0.955 0.025 60);
+  --shadow: 0 1px 2px oklch(0.28 0.012 60 / 0.05), 0 8px 24px -16px oklch(0.28 0.012 60 / 0.18);
+
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --radius: 14px;
+  --radius-sm: 8px;
+}
+
+/* Dark is defined only as an override of the tokens above, so nothing has its
+   sole definition inside a media query. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: oklch(0.183 0.006 80);
+    --surface: oklch(0.225 0.007 80);
+    --text: oklch(0.935 0.006 85);
+    --muted: oklch(0.68 0.008 85);
+    --line: oklch(0.315 0.008 80);
+    --line-soft: oklch(0.272 0.007 80);
+    --accent: oklch(0.735 0.080 195);
+    --accent-soft: oklch(0.305 0.030 195);
+    --pos: oklch(0.735 0.070 155);
+    --attn: oklch(0.775 0.100 60);
+    --attn-soft: oklch(0.295 0.035 60);
+    --shadow: 0 1px 2px oklch(0 0 0 / 0.25), 0 8px 24px -16px oklch(0 0 0 / 0.5);
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: oklch(0.183 0.006 80);
+  --surface: oklch(0.225 0.007 80);
+  --text: oklch(0.935 0.006 85);
+  --muted: oklch(0.68 0.008 85);
+  --line: oklch(0.315 0.008 80);
+  --line-soft: oklch(0.272 0.007 80);
+  --accent: oklch(0.735 0.080 195);
+  --accent-soft: oklch(0.305 0.030 195);
+  --pos: oklch(0.735 0.070 155);
+  --attn: oklch(0.775 0.100 60);
+  --attn-soft: oklch(0.295 0.035 60);
+  --shadow: 0 1px 2px oklch(0 0 0 / 0.25), 0 8px 24px -16px oklch(0 0 0 / 0.5);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 13.5px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Every figure on the page. Tabular so columns of money line up, and slightly
+   tightened because long numbers ($1,039,847) are the point of most cards. */
+.num {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* --- shell ---------------------------------------------------------------- */
+
+.shell {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.sidebar {
+  border-right: 1px solid var(--line);
+  padding: 18px 12px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 4px 10px 16px;
+  font-weight: 600;
+}
+
+.brand-mark {
+  width: 18px; height: 18px;
+  border-radius: 5px;
+  background: var(--accent);
+  flex: none;
+}
+
+.badge {
+  font-size: 10px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-weight: 500;
+}
+
+.nav-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 13px;
+}
+.nav-item:hover { background: var(--line-soft); text-decoration: none; }
+.nav-item[aria-current="page"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.nav-item .count { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.sidebar-foot {
+  margin-top: auto;
+  padding: 10px;
+  font-size: 10.5px;
+  color: var(--muted);
+  border-top: 1px solid var(--line-soft);
+}
+
+.main { padding: 22px 26px 60px; max-width: 1180px; }
+
+/* --- headings ------------------------------------------------------------- */
+
+.eyebrow {
+  font-size: 10.5px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+h1 { font-size: 21px; font-weight: 600; margin: 6px 0 18px; letter-spacing: -0.01em; }
+
+.page-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+
+/* --- cards ---------------------------------------------------------------- */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px;
+  box-shadow: var(--shadow);
+}
+
+.grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.stack { display: grid; gap: 14px; }
+
+.card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+/* --- net worth ------------------------------------------------------------ */
+
+.networth-top { display: flex; justify-content: space-between; gap: 28px; flex-wrap: wrap; }
+
+.hero {
+  font-size: 38px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  margin: 6px 0 0;
+}
+
+.hero-row { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+
+.delta { font-size: 13px; font-weight: 600; }
+.delta.up { color: var(--pos); }
+.delta.down { color: var(--attn); }
+
+.chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+
+.chip {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 5px 10px;
+  font-size: 11.5px;
+  color: var(--muted);
+  display: flex;
+  gap: 8px;
+}
+.chip strong { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.side-stat { text-align: right; }
+.side-stat .v { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.side-stat .l { font-size: 11px; color: var(--muted); }
+
+.note { font-size: 11.5px; color: var(--muted); margin-top: 12px; max-width: 46ch; }
+
+.chart { margin-top: 16px; }
+.chart svg { display: block; width: 100%; height: 120px; overflow: visible; }
+
+/* --- rows ----------------------------------------------------------------- */
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.row:last-child { border-bottom: 0; }
+.row .label { font-weight: 500; }
+.row .sub { font-size: 11px; color: var(--muted); }
+.row .v { font-variant-numeric: tabular-nums; font-weight: 600; }
+
+.big-row .v { font-size: 17px; }
+
+.swatch { width: 7px; height: 7px; border-radius: 2px; flex: none; display: inline-block; margin-right: 7px; }
+
+.bar { display: flex; gap: 2px; height: 7px; margin-bottom: 14px; }
+.bar span { border-radius: 2px; }
+
+.pct { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; margin-left: 10px; }
+
+/* --- attention ------------------------------------------------------------ */
+
+.attn-item {
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: var(--line-soft);
+  display: flex;
+  gap: 10px;
+}
+.attn-item.warn { background: var(--attn-soft); }
+.attn-item .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); margin-top: 6px; flex: none; }
+.attn-item.warn .dot { background: var(--attn); }
+.attn-item .t { font-weight: 600; font-size: 12.5px; }
+.attn-item .d { font-size: 11.5px; color: var(--muted); }
+
+/* --- table ---------------------------------------------------------------- */
+
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+th {
+  text-align: left;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 600;
+  padding: 0 10px 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+td { padding: 8px 10px 8px 0; border-bottom: 1px solid var(--line-soft); white-space: nowrap; }
+td.desc { white-space: normal; min-width: 180px; }
+td.amt { text-align: right; font-variant-numeric: tabular-nums; padding-right: 0; }
+td.amt.in { color: var(--pos); }
+.mono { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+
+/* --- states --------------------------------------------------------------- */
+
+.skeleton { color: var(--muted); font-size: 12px; padding: 6px 0; }
+
+.error {
+  border: 1px solid var(--attn);
+  background: var(--attn-soft);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  font-size: 12.5px;
+  margin-bottom: 14px;
+}
+
+.gate { max-width: 380px; margin: 14vh auto; }
+.gate input {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  margin: 10px 0;
+}
+.gate button {
+  width: 100%;
+  padding: 9px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--surface);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+/* Below ~900px the sidebar becomes a top strip; the cards were already a
+   single column by then. */
+@media (max-width: 900px) {
+  .shell { grid-template-columns: 1fr; }
+  .sidebar {
+    position: static;
+    height: auto;
+    flex-direction: row;
+    align-items: center;
+    overflow-x: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .sidebar-foot, .nav-item .count { display: none; }
+  .brand { padding: 0 12px 0 4px; }
+  .grid-2 { grid-template-columns: 1fr; }
+  .main { padding: 16px 14px 40px; }
+  .hero { font-size: 30px; }
+}

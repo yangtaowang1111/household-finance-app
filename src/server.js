@@ -1,4 +1,5 @@
 require('dotenv').config();
+const path = require('path');
 const express = require('express');
 
 require('./db'); // applies schema on startup
@@ -19,6 +20,11 @@ seedTaxonomy({ log: true });
 
 const app = express();
 app.use(express.json());
+
+// The dashboard. Served before the API-key gate because a browser cannot put
+// a header on a document request; the page asks for the key itself and calls
+// the API with it. Access to the container is already gated by Tailscale.
+app.use(express.static(path.join(__dirname, '..', 'public')));
 
 app.get('/health', (req, res) => res.json({ ok: true }));
 

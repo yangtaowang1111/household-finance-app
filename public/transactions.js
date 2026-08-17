@@ -163,6 +163,11 @@ function categoryOptions(selectedId) {
     .join('');
 }
 
+function closeEditor() {
+  $('editor').hidden = true;
+  editing = null;
+}
+
 function openEditor(id) {
   editing = rows.find((t) => t.id === id);
   if (!editing) return;
@@ -182,6 +187,7 @@ function openEditor(id) {
    is the difference between a useful shortcut and a silent mistake. */
 async function updateLearnHint() {
   const hint = $('ed-learn-hint');
+  if (!editing) return;
   if (!$('ed-learn').checked) {
     hint.textContent = 'Off: only this transaction changes.';
     return;
@@ -200,6 +206,7 @@ async function updateLearnHint() {
 }
 
 async function saveEdit() {
+  if (!editing) return closeEditor();
   const categoryId = Number($('ed-cat').value);
   const learn = $('ed-learn').checked;
   const note = $('ed-note').value.trim();
@@ -209,7 +216,7 @@ async function saveEdit() {
       method: 'PATCH',
       body: { category_id: categoryId, learn_rule: learn, notes: note || null },
     });
-    $('editor').hidden = true;
+    closeEditor();
     toast(
       updated.rule_learned
         ? `Recategorised, and future ones will follow.`
@@ -319,11 +326,11 @@ function wire() {
     load();
   });
 
-  $('ed-cancel').addEventListener('click', () => { $('editor').hidden = true; });
+  $('ed-cancel').addEventListener('click', closeEditor);
   $('ed-save').addEventListener('click', saveEdit);
   $('ed-learn').addEventListener('change', updateLearnHint);
-  $('editor').addEventListener('click', (e) => { if (e.target.id === 'editor') $('editor').hidden = true; });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('editor').hidden = true; });
+  $('editor').addEventListener('click', (e) => { if (e.target.id === 'editor') closeEditor(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeEditor(); });
 
   $('bulk-go').addEventListener('click', applyBulk);
   $('bulk-cancel').addEventListener('click', () => { selected.clear(); render(); updateBulkBar(); });

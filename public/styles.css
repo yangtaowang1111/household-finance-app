@@ -65,6 +65,18 @@
 
 * { box-sizing: border-box; }
 
+/* The `hidden` attribute is enforced by the browser's default stylesheet as
+   `[hidden] { display: none }`. Any author rule that sets `display` on the same
+   element beats it, because author styles outrank the user agent's — so
+   `.modal { display: flex }` silently un-hides every element marked hidden.
+   That is what made the recategorise dialog appear on load with nothing loaded
+   into it, and the bulk bar show "0 selected" permanently.
+
+   `!important` here is deliberate and is the standard fix: `hidden` is a
+   statement about whether the element exists for the user, and no layout rule
+   should be able to overrule it. */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   background: var(--bg);

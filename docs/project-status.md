@@ -498,10 +498,18 @@ Worth knowing what's actually been exercised vs. merely written:
 
 ## Next steps (as of 2026-08-16, after the 2025 import)
 
-**1. ⏳ TIME-SENSITIVE — pull SimpleFIN's remaining history now.** Only 30 days
-have ever been synced, but SimpleFIN holds ~90 — so roughly **2026-05-18 →
-2026-07-15 is sitting unclaimed**, and the window is *rolling*: it ages out a
-day at a time and cannot be recovered from the API afterwards. One call:
+**1. ✅ DONE 2026-08-16 — SimpleFIN's remaining history is captured.** The
+backfill ran at 89 days and recovered **288 transactions** that were days from
+ageing out. SimpleFIN's coverage is now **2026-05-20 → 2026-08-13 (407
+transactions)**, up from 119; dedup recognised all 119 pre-existing rows and
+flagged nothing. Categorisation finished across two batches — 204 by rule, 84
+by AI, 8 low-confidence — and left **0 uncategorized**, with rules up from 188
+to **296**. The second batch matched 84 of 88 by rule alone, using rules learned
+minutes earlier in the first.
+
+Database total: **2,021 transactions** (1,614 csv_import + 407 simplefin).
+
+The command, for the record (`backfill` is required — see below):
 
 ```bash
 curl -s -X POST -H "x-api-key: $API_KEY" -H "Content-Type: application/json" \
@@ -516,7 +524,15 @@ cut down, so a clamp can't pass for a successful deep sync.
 Doing this first also shrinks step 2 — statements then only need to cover
 January to mid-May instead of the full year.
 
-**2. Fill the 2026 gap from bank statements.** Agreed approach:
+**2. Fill the 2026 gap from bank statements — now 2026-01-01 → 2026-05-19.**
+The backfill shortened this from a full year to four and a half months. Agreed
+approach:
+
+- **Cutoff is `2026-05-20`**, the observed earliest synced transaction, already
+  set as `DEFAULT_CUTOFF` in `scripts/import-history.js`. Note it is the date
+  transactions actually *start*, not the date the 89-day window opened
+  (2026-05-19) — using the window start would skip a day SimpleFIN never
+  supplied.
 
 - **One export per account, NOT consolidated.** Last year's file was merged
   because the categories were hand-written; raw statements have no categories,

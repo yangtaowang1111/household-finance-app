@@ -24,7 +24,14 @@ const { importHistory } = require('../src/services/historyImporter');
 // /data. Following the database keeps "next to the data" true in both places.
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'data', 'finance.db');
 const IMPORT_DIR = process.env.IMPORT_DIR || path.join(path.dirname(DB_PATH), 'import');
-const DEFAULT_CUTOFF = '2026-05-18'; // earliest date SimpleFIN can serve
+// Rows on or after this date are skipped, so it must equal the *observed*
+// earliest synced transaction, not the date the sync window opened. The
+// 2026-08-16 backfill asked for 2026-05-19 but the first transaction actually
+// landed on 2026-05-20 — leaving the cutoff at the window start would skip a
+// day that SimpleFIN never supplied, putting a hole between the two sources.
+// Re-check with:
+//   SELECT MIN(date) FROM transactions WHERE source = 'simplefin';
+const DEFAULT_CUTOFF = '2026-05-20';
 
 function newestCsv() {
   if (!fs.existsSync(IMPORT_DIR)) return null;

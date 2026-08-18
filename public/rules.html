@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rules &amp; imports — Ledger</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='4' fill='%234a9ba5'/></svg>">
+</head>
+<body>
+
+<div id="gate" class="gate" hidden>
+  <div class="card">
+    <div class="eyebrow">Ledger</div>
+    <h1 style="margin:6px 0 2px;font-size:17px">Enter API key</h1>
+    <p style="color:var(--muted);font-size:12px;margin:0">Stored in this browser only. It's the <code>API_KEY</code> from your <code>.env</code>.</p>
+    <input id="gate-key" type="password" autocomplete="off" spellcheck="false" placeholder="API key">
+    <button id="gate-go">Unlock</button>
+    <p id="gate-err" class="delta down" style="font-size:12px" hidden>That key was rejected.</p>
+  </div>
+</div>
+
+<div class="shell" id="app" hidden>
+  <nav class="sidebar">
+    <div class="brand">
+      <span class="brand-mark"></span>
+      <span>Ledger</span>
+      <span class="badge">self-hosted</span>
+    </div>
+    <a class="nav-item" href="index.html">Overview</a>
+    <a class="nav-item" href="transactions.html">Transactions</a>
+    <a class="nav-item" href="budget.html">Budget</a>
+    <a class="nav-item" href="accounts.html">Accounts</a>
+    <a class="nav-item" href="investments.html">Investments</a>
+    <a class="nav-item" href="properties.html">Property</a>
+    <a class="nav-item" href="rules.html" aria-current="page">Rules &amp; imports</a>
+    <div class="sidebar-foot" id="foot"></div>
+  </nav>
+
+  <main class="main">
+    <div id="errors"></div>
+
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">Rules &amp; imports</div>
+        <h1>Rules &amp; imports</h1>
+      </div>
+    </div>
+
+    <!-- imports -->
+    <section class="card" style="margin-bottom:14px">
+      <div class="card-head"><span class="eyebrow">Import bank statements</span></div>
+      <p class="note" style="margin-top:0">
+        One file per account. Each filename must contain that account's last four
+        digits — a bank export rarely says which account it came from, so the
+        name is the only link. Anything unmatched is reported, never guessed at.
+      </p>
+      <div class="filters" style="margin-top:12px">
+        <input type="file" id="files" multiple accept=".csv,text/csv">
+        <label class="check">from <input type="date" id="imp-from"></label>
+        <label class="check">before <input type="date" id="imp-before"></label>
+        <button id="dry-run" class="ghost">Dry run</button>
+        <button id="do-import">Import</button>
+      </div>
+      <div id="import-result"></div>
+    </section>
+
+    <!-- rules -->
+    <section class="card">
+      <div class="card-head" style="flex-wrap:wrap;gap:10px">
+        <span class="eyebrow">Learned rules</span>
+        <input type="search" id="rule-search" placeholder="Search patterns…" style="max-width:220px">
+        <span class="pct" id="rule-count"></span>
+      </div>
+      <p class="note" style="margin-top:0">
+        These run <em>before</em> the categoriser on every import, so a wrong one
+        is silent and repeats. Shortest patterns first — a short pattern is the
+        one most likely to catch more than it should.
+      </p>
+      <div class="table-wrap" id="rules"><div class="skeleton">Loading…</div></div>
+    </section>
+  </main>
+</div>
+
+<div id="matches" class="modal" hidden>
+  <div class="modal-card card">
+    <div class="eyebrow">Matches</div>
+    <div id="m-pattern" style="font-weight:600;margin:6px 0 12px"></div>
+    <div class="table-wrap" id="m-rows" style="max-height:50vh;overflow-y:auto"></div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button id="m-close" class="ghost">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="common.js"></script>
+<script src="rules.js"></script>
+</body>
+</html>

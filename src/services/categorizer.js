@@ -167,9 +167,18 @@ async function categorizeUncategorized(limit = DEFAULT_LIMIT) {
   const cappedLimit = Math.max(1, Math.min(requested, MAX_LIMIT));
   const categories = db.prepare('SELECT id, name, bucket FROM categories').all();
   const rules = db.prepare(`
+    -- Longest pattern first, so the most specific rule wins.
+    --
+    -- Matching takes the first hit, and without this the order is whatever
+    -- SQLite returns — insertion order in practice. That let a short generic
+    -- rule created early beat a specific one created later: "CREDIT" (learned
+    -- from a stray descriptor) would claim "CHASE CREDIT CRD AUTOPAY" before
+    -- the rule that actually describes it, filing 47 transactions as investment
+    -- income. Specificity is a far better tiebreak than age.
     SELECT cr.merchant_pattern, cr.always_review, c.id AS category_id, c.name
     FROM categorization_rules cr JOIN categories c ON c.id = cr.category_id
-  `).all();
+  
+    ORDER BY LENGTH(cr.merchant_pattern) DESC`).all();
   const uncategorized = db.prepare(`
     SELECT id, merchant_raw, payee, amount FROM transactions
     WHERE category_id IS NULL

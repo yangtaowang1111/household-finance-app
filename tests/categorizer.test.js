@@ -155,3 +155,27 @@ test('prose wrapped around the array does not defeat parsing', () => {
   assert.equal(r.length, 1);
   assert.equal(r[0].id, 7);
 });
+
+// --- rule precedence --------------------------------------------------------
+
+test('the most specific rule wins, not the oldest', () => {
+  // The real case: a stray "CREDIT" rule learned early would otherwise claim
+  // every CHASE CREDIT CRD AUTOPAY before the rule describing it, filing 47
+  // credit card payments as investment income.
+  const rules = [
+    { merchant_pattern: 'CHASE CREDIT CRD AUTOPAY', category_id: 1 },
+    { merchant_pattern: 'CREDIT', category_id: 2 },
+  ].sort((a, b) => b.merchant_pattern.length - a.merchant_pattern.length);
+
+  const txn = { payee: null, merchant_raw: 'CHASE CREDIT CRD AUTOPAY PPD ID: 4760039224' };
+  assert.equal(findRuleMatch(rules, txn).category_id, 1);
+});
+
+test('a generic rule still catches what nothing more specific claims', () => {
+  const rules = [
+    { merchant_pattern: 'CHASE CREDIT CRD AUTOPAY', category_id: 1 },
+    { merchant_pattern: 'CREDIT', category_id: 2 },
+  ].sort((a, b) => b.merchant_pattern.length - a.merchant_pattern.length);
+
+  assert.equal(findRuleMatch(rules, { merchant_raw: 'TRAVEL CREDIT $300/YEAR' }).category_id, 2);
+});

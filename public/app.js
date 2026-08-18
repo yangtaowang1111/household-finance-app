@@ -338,10 +338,14 @@ async function load() {
     }
     renderAttention(attention);
 
-    $('nav-txns').textContent = txns.length >= 10 ? '2,500+' : String(txns.length);
-    $('nav-accts').textContent = String(nw.by_type.reduce((n, g) => n + g.accounts, 0));
-    $('nav-props').textContent = String(nw.properties.length);
-    $('foot').textContent = `synced ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`;
+    // Guarded: these are decorations on the nav, and a nav that changes shape
+    // must not be able to throw an error banner onto a page that rendered fine.
+    const setText = (id, text) => {
+      const el = $(id);
+      if (el) el.textContent = text;
+    };
+    setText('nav-txns', txns.length >= 10 ? '2,500+' : String(txns.length));
+    setText('foot', `synced ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`);
   } catch (err) {
     if (err.unauthorized) return showGate(true);
     showError(err.message);

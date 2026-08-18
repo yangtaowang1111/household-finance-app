@@ -19,8 +19,15 @@
 
 const Anthropic = require('@anthropic-ai/sdk');
 
-const MODEL = 'claude-opus-5';
+const DEFAULT_MODEL = 'claude-opus-5';
 const MAX_OUTPUT_TOKENS = 4000;
+
+// Opus at roughly 7c a review, Sonnet at roughly a fifth of that. The
+// difference bought is questioning rather than restating -- Opus spotted that
+// the July net worth drop was overstated by held-flat mortgage balances, which
+// is the kind of observation the feature exists for. But once a month is a
+// habit and the choice should sit with whoever pays for it.
+const MODELS = ['claude-opus-5', 'claude-sonnet-5'];
 
 const SYSTEM = `You are reviewing a household's finances for one period. You are given a compact summary of already-reconciled figures — not the underlying transactions.
 
@@ -58,9 +65,10 @@ async function writeReport(data, options = {}) {
   }
 
   const client = new Anthropic({ apiKey });
+  const model = MODELS.includes(options.model) ? options.model : DEFAULT_MODEL;
 
   const response = await client.messages.create({
-    model: MODEL,
+    model,
     max_tokens: MAX_OUTPUT_TOKENS,
     // Adaptive rather than a token budget: this is exactly the kind of judgement
     // call worth thinking about, and the summary is small enough that thinking
@@ -85,7 +93,7 @@ async function writeReport(data, options = {}) {
 
   return {
     text,
-    model: MODEL,
+    model,
     // Recorded so the cost of a habit is visible rather than a surprise on the
     // bill.
     usage: {
@@ -95,4 +103,4 @@ async function writeReport(data, options = {}) {
   };
 }
 
-module.exports = { writeReport, SYSTEM, MODEL };
+module.exports = { writeReport, SYSTEM, DEFAULT_MODEL, MODELS };

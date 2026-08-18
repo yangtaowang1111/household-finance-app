@@ -302,6 +302,7 @@ async function load() {
       api('/reports?limit=50'),
     ]);
     if (settings.report_context) $('report-context').value = settings.report_context;
+    if (settings.report_model) $('model').value = settings.report_model;
     notes = yearNotes;
     history = reportList;
     renderNoteEditor();
@@ -340,6 +341,13 @@ startPage(() => {
   $('generate').addEventListener('click', () => generate(false));
   $('save-context').addEventListener('click', saveContext);
   $('save-note').addEventListener('click', saveNote);
+  // Saved rather than passed per request, so the choice persists without being
+  // re-made every month.
+  $('model').addEventListener('change', () =>
+    api('/settings', { method: 'PUT', body: { report_model: $('model').value } })
+      .then(() => toast('Model saved.'))
+      .catch((err) => toast(`Couldn't save: ${err.message}`))
+  );
   // The note editor follows whichever period is selected, so writing a note and
   // reviewing that period are the same gesture.
   $('period').addEventListener('change', () => { renderNoteEditor(); updateGate(); });

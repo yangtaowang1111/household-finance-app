@@ -24,12 +24,21 @@ const GROUPS = [
   },
   {
     name: 'Home & Utilities',
-    children: ['Mortgage', 'HOA, Water & Sewer', 'Home Repairs & Maintenance', 'Electricity', 'Gas', 'Internet', 'Mobile Phone'],
+    children: ['Mortgage', 'HOA, Water & Sewer', 'Home Repairs & Maintenance', 'Home Capital Improvements', 'Electricity', 'Gas', 'Internet', 'Mobile Phone'],
   },
   {
     // Kept separate from Home & Utilities for tax reporting (Schedule E).
+    //
+    // Repairs and capital improvements are separate children because they are
+    // separate at tax time, not for tidiness: a repair is deductible against
+    // rental income in the year it happens, while an improvement is depreciated
+    // over 27.5 years. The July 2026 HVAC and furnace replacement is the case
+    // that made this necessary — $7,000 filed as a repair would have claimed a
+    // deduction that is not available. The same distinction applies to the
+    // primary home, where improvements raise the cost basis at sale rather than
+    // deducting annually.
     name: 'Rental Property',
-    children: ['Rental Mortgage', 'Rental HOA', 'Rental Repairs & Maintenance', 'Rental Management Fee'],
+    children: ['Rental Mortgage', 'Rental HOA', 'Rental Repairs & Maintenance', 'Rental Capital Improvements', 'Rental Management Fee'],
   },
   {
     name: 'Childcare & Education',

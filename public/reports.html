@@ -58,6 +58,10 @@
         <select id="period"></select>
         <button id="preview" class="ghost">Show the figures</button>
         <button id="generate">Write the review</button>
+        <select id="model" title="Which model writes the review" style="margin-left:auto">
+          <option value="claude-opus-5">Opus — ~7c, questions the figures</option>
+          <option value="claude-sonnet-5">Sonnet — ~1.5c, restates them</option>
+        </select>
       </div>
       <p class="note" id="gate-note" hidden style="color:var(--attn);margin-top:8px"></p>
       <p class="note" style="margin-top:0">

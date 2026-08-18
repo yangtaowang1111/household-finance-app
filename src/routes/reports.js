@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { reportData } = require('../services/reportData');
-const { writeReport } = require('../services/reportWriter');
+const { writeReport, MODELS, DEFAULT_MODEL } = require('../services/reportWriter');
 
 const router = express.Router();
 
@@ -51,7 +51,9 @@ router.post('/', async (req, res) => {
 
   let written;
   try {
-    written = await writeReport(data);
+    // Whichever model the household has chosen to pay for.
+    const chosen = db.prepare("SELECT value FROM settings WHERE key = 'report_model'").get();
+    written = await writeReport(data, { model: chosen && chosen.value });
   } catch (err) {
     // A missing key is a setup problem, not a server fault, and says so.
     return res.status(err.missingKey ? 400 : 502).json({ error: err.message });

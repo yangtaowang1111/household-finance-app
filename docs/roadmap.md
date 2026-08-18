@@ -12,14 +12,23 @@ makes the app usable soonest, not a final feature set.
 **Purpose: keep track of spending, budget, net worth and investments.** Nothing
 else ships until those four work end to end.
 
-| | Status |
+**Complete as of 2026-08-17.** Seven screens, every nav entry resolving to a
+real page:
+
+| | |
 |---|---|
-| Overview (net worth, cash flow, spending breakdown) | Done |
-| Transactions (list, filters, recategorise, rules) | Done |
-| **Budget baselines from history** | Next |
-| **Budget vs actual, by month and YTD** | Next |
-| Accounts | Not started |
-| Investments | Not started |
+| Overview | net worth with reconstructed history, cash flow, spending breakdown |
+| Transactions | list, filters, recategorise, rule editing, bulk edit |
+| Budget — Set | baselines from history, slider and dollars, goals header |
+| Budget — Track | budget vs actual by month or YTD, pace, year-end forecast |
+| Accounts | grouped by type, editable metadata, manual valuations |
+| Investments | value against contributions, aggregate gain |
+| Property | value, equity, rental income vs expenses, escrow proxy |
+| Rules & imports | 162 rules reviewable and editable, statement upload |
+
+`Spending` was dropped from the navigation: Budget → Track answers the same
+questions, and a second screen showing budget-vs-actual would only make the
+reader guess which to trust.
 
 Then, in order:
 

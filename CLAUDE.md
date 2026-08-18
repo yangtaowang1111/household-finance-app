@@ -114,7 +114,7 @@ Running and reviewing the sync: [docs/phase3-bank-sync.md](docs/phase3-bank-sync
 
 Session context, environment quirks, and decisions so far: [docs/project-status.md](docs/project-status.md).
 
-### Phase 4 — Design / UI — NEXT
+### Phase 4 — Design / UI — ITERATION 1 DONE
 
 **Web first, native app second** (decided 2026-08-16, a change from the original
 Expo-first plan). The web app is served by the container that already runs — no
@@ -132,7 +132,9 @@ until then.
 - Build against the existing API — no backend changes expected
 - Simple auth (single-household app, doesn't need much)
 
-**Done when:** you're checking the app instead of the API directly.
+**Done:** seven screens live on the NAS — Overview, Transactions, Budget
+(Set/Track), Accounts, Investments, Property, Rules & imports. Every navigation
+entry resolves to a real page. Reporting is next, then Retirement.
 
 Section-by-section scope, the order it gets built in, and the decisions behind
 it: **[docs/roadmap.md](docs/roadmap.md)**. Iteration 1 is deliberately narrow —

@@ -206,3 +206,35 @@ test('writing one year leaves another alone', () => {
   assert.equal(find(baseline({ year: 2026, reference: 2025 }), 'Groceries').budgeted_annual, 12000);
   assert.equal(find(baseline({ year: 2027, reference: 2026 }), 'Groceries').budgeted_annual, 6000);
 });
+
+// --- projecting a part-finished year ----------------------------------------
+
+test('a once-a-year cost that has happened projects to what was paid', () => {
+  // The tax case. April 2026 was $8,042 for tax year 2025. Annualising a flat
+  // run rate over eight elapsed months projects ~$12,000 for a payment that
+  // happens once and is already done.
+  spend('Taxes', 2024, { 4: 10349 });
+  spend('Taxes', 2025, { 4: 8042 });
+
+  const r = find(baseline({ year: 2025, reference: 2024 }), 'Taxes');
+  assert.equal(r.current_year.projected_annual, 8042, 'the year is already fully spent for this category');
+  assert.equal(r.current_year.elapsed_share, 1);
+});
+
+test('a flat category still annualises normally', () => {
+  spend('Groceries', 2024, Object.fromEntries(Array.from({ length: 12 }, (_, i) => [i + 1, 1000])));
+  spend('Groceries', 2025, Object.fromEntries(Array.from({ length: 12 }, (_, i) => [i + 1, 1200])));
+
+  const r = find(baseline({ year: 2025, reference: 2024 }), 'Groceries');
+  assert.equal(r.current_year.projected_annual, 14400);
+});
+
+test('a spend still to come is not projected from almost nothing', () => {
+  // A December-only category has no basis for a projection in March. Dividing
+  // by a near-zero elapsed share would produce an enormous number.
+  spend('Gifts', 2024, { 12: 3000 });
+
+  const r = find(baseline({ year: 2025, reference: 2024 }), 'Gifts');
+  assert.ok(Number.isFinite(r.current_year.projected_annual));
+  assert.ok(r.current_year.projected_annual < 3001, 'no explosion from a tiny divisor');
+});

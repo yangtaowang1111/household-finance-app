@@ -152,6 +152,23 @@ function baseline(options = {}) {
     // spending — a category that was quiet in March was still budgeted in March.
     const runRate = monthsElapsed ? curTotal / monthsElapsed : 0;
 
+    // Projecting the year needs the category's own shape, not a flat run rate.
+    // A flat rate assumes spending recurs monthly, which sporadic categories do
+    // not: the April 2026 tax payment of $8,042 divided by eight elapsed months
+    // and multiplied by twelve projects ~$12,000 for something that happens once
+    // a year and has already happened.
+    //
+    // So the divisor is the share of the year that has elapsed *according to
+    // the shape*. For Taxes that share is already 1.0 by August, giving back
+    // the $8,042 actually paid. For Groceries it is 8/12, which is the ordinary
+    // annualisation.
+    const shape = monthlyShape(ref, seasonal);
+    const elapsedShare = shape.slice(0, monthsElapsed).reduce((s, v) => s + v, 0);
+    // Below this, the projection divides by almost nothing and explodes — a
+    // December-only category seen in March has no basis for a projection, so it
+    // falls back to what has actually been spent.
+    const projected = elapsedShare > 0.15 ? curTotal / elapsedShare : curTotal;
+
     // The annual suggestion is built from the annual TOTAL, not from the median
     // month multiplied by twelve. The median describes a typical month well, but
     // multiplying it assumes twelve active months — Travel spent in seven, so
@@ -162,10 +179,9 @@ function baseline(options = {}) {
     // `largest_month` lets the caller ask "June was $10,000 of this — is that
     // happening again?", which is a question only a person can answer.
     const fromReference = refTotal;
-    const fromRunRate = runRate * 12;
     let suggested = fromReference;
-    if (fromReference > 0 && fromRunRate > 0) suggested = fromReference * 0.6 + fromRunRate * 0.4;
-    else if (fromRunRate > 0) suggested = fromRunRate;
+    if (fromReference > 0 && projected > 0) suggested = fromReference * 0.6 + projected * 0.4;
+    else if (projected > 0) suggested = projected;
 
     return {
       id: c.id,
@@ -190,9 +206,13 @@ function baseline(options = {}) {
         monthly: cur.map(round2),
         months_elapsed: monthsElapsed,
         run_rate: round2(runRate),
+        // What the full year looks like on this pattern. For a category whose
+        // spending has already happened, this equals what was spent.
+        projected_annual: round2(projected),
+        elapsed_share: Math.round(elapsedShare * 100) / 100,
       },
       seasonal,
-      shape: monthlyShape(ref, seasonal).map((v) => round2(v * 1000) / 1000),
+      shape: shape.map((v) => round2(v * 1000) / 1000),
       suggested_annual: round2(suggested),
       budgeted_annual: existing.has(c.id) ? existing.get(c.id) : null,
     };

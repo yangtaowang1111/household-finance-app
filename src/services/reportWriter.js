@@ -11,8 +11,11 @@
 // starts school in March" is not something a rule will ever produce, and it is
 // worth more than any amount of restating the totals back.
 //
-// Opus rather than the categoriser's Sonnet: this runs once a month on a
-// summary, so the whole cost is a few cents, and judgement is the entire point.
+// Opus rather than the categoriser's Sonnet. A measured run costs about 7c --
+// 2,661 tokens in, 2,535 out, most of the latter being thinking. At one review
+// a month that is under a dollar a year, and judgement is the entire point of
+// the feature. Sonnet would be roughly a fifth the price and would restate the
+// figures more and question them less; the questioning is what is being bought.
 
 const Anthropic = require('@anthropic-ai/sdk');
 
@@ -31,6 +34,7 @@ Cover, in this order, and only where there is something worth saying:
 4. **One or two things worth doing** — concrete, and only if genuinely warranted. "Nothing needs doing" is a legitimate and useful answer.
 
 Rules:
+- **household_context, where present, is fact.** It holds what the ledger cannot: a job ending, a cost about to stop, a payment already expected. Prefer it over anything you would infer from the numbers, and say when it changes the reading of a figure.
 - Never invent a figure. If something is not in the summary, say it is not known rather than estimating it.
 - Investment gains are never income. A balance change is not a cash flow.
 - Do not moralise about spending. Golf and dining out are choices, not failures.

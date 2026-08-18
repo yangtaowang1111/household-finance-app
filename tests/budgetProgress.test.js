@@ -235,3 +235,37 @@ test('a single month does not claim to project the year', () => {
 
   assert.equal(cat(budgetProgress({ year: 2025, month: 3 }), 'Groceries').projected_year_end, null);
 });
+
+test('money filed on a group is counted, not silently dropped', () => {
+  // The categoriser can file a transaction on a group -- the model answering
+  // "Shopping" matches the Shopping group by name. Filtering those out made the
+  // money vanish from the comparison AND from the unbudgeted figure meant to
+  // catch it: July 2026 lost $4,339 this way while "unbudgeted" read zero.
+  const shopping = categoryId('Shopping');
+  db.prepare(
+    `INSERT INTO transactions (account_id, date, amount, merchant_raw, category_id, source)
+     VALUES (?, '2025-07-15', -4339, 'SOMETHING', ?, 'csv_import')`
+  ).run(accountId, shopping);
+
+  const r = budgetProgress({ year: 2025, month: 7 });
+  assert.equal(r.actual, 4339, 'it reaches the total');
+  assert.equal(r.unbudgeted_spending, 4339, 'and is reported as unbudgeted, not as zero');
+
+  const row = r.groups.flatMap((g) => g.categories).find((c) => c.filed_on_group);
+  assert.match(row.name, /unspecified/, 'named for what it is rather than invented');
+  assert.equal(row.group, 'Shopping', 'and rolls up under its own group');
+});
+
+test('a group cap is not double-counted against a group-filed row', () => {
+  const shopping = categoryId('Shopping');
+  writePlan(2025, [{ category_id: shopping, annual_amount: 12000 }]);
+  db.prepare(
+    `INSERT INTO transactions (account_id, date, amount, merchant_raw, category_id, source)
+     VALUES (?, '2025-07-15', -500, 'SOMETHING', ?, 'csv_import')`
+  ).run(accountId, shopping);
+
+  const group = budgetProgress({ year: 2025, month: 7 }).groups.find((g) => g.name === 'Shopping');
+  assert.equal(group.cap, 1000, 'the cap is reported once, as the cap');
+  const row = group.categories.find((c) => c.filed_on_group);
+  assert.equal(row.budgeted, null, 'and not again as the row of allowance');
+});

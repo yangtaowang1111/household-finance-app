@@ -205,8 +205,19 @@ function toast(message) {
   toastTimer = setTimeout(() => { el.hidden = true; }, 4000);
 }
 
+async function saveContext() {
+  try {
+    await api('/settings', { method: 'PUT', body: { report_context: $('report-context').value.trim() || null } });
+    toast('Context saved — it goes with every review from now on.');
+  } catch (err) {
+    toast(`Couldn't save: ${err.message}`);
+  }
+}
+
 async function load() {
   try {
+    const settings = await api('/settings').catch(() => ({}));
+    if (settings.report_context) $('report-context').value = settings.report_context;
     history = await api('/reports?limit=50');
     renderHistory();
     $('foot').textContent = `${history.length} reviews`;
@@ -233,6 +244,7 @@ startPage(() => {
   $('year').addEventListener('change', () => { $('period').innerHTML = periodOptions(); });
   $('preview').addEventListener('click', preview);
   $('generate').addEventListener('click', () => generate(false));
+  $('save-context').addEventListener('click', saveContext);
 
   load();
 });

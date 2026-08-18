@@ -64,6 +64,18 @@
         figures, never your transactions. "Show the figures" is free and displays
         exactly what it would be given.
       </p>
+      <details id="context-box" style="margin-top:12px;border-top:1px solid var(--line-soft);padding-top:12px">
+        <summary style="font-size:11.5px;color:var(--muted);cursor:pointer">Context — what the numbers can't tell it</summary>
+        <p class="note" style="margin-top:8px">
+          Facts no ledger holds: a job ending, a cost about to stop, a payment
+          already expected. Sent with every review, and treated as fact over
+          anything inferred from the figures.
+        </p>
+        <textarea id="report-context" rows="4" placeholder="e.g. Tony's last day at the old job was 24 July; no paycheck in August; new salary starts September."
+          style="width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font:inherit;font-size:12.5px"></textarea>
+        <button id="save-context" class="ghost" style="margin-top:8px">Save context</button>
+      </details>
+
       <div id="preview-out"></div>
     </section>
 

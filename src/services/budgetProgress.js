@@ -124,19 +124,31 @@ function budgetProgress({ year, month }) {
   }
 
   const rows = categories
-    .filter((c) => c.parent_category_id !== null && c.counts_as_spending)
+    // Groups are included, not only children. The categoriser can file a
+    // transaction on a group -- the model answering "Shopping" matches the
+    // Shopping group by name -- and filtering those out made the money vanish
+    // from the comparison AND from the unbudgeted figure meant to catch it.
+    // July 2026 had $4,339 disappear this way while "unbudgeted" read zero.
+    .filter((c) => c.counts_as_spending)
     .map((c) => {
+      const filedOnGroup = c.parent_category_id === null;
       const actual = actuals.get(c.id) || 0;
       // null, not zero: "no budget set" and "budgeted nothing" are different
       // claims, and only the second is an overspend when money is spent.
-      const budgeted = budgets.has(c.id) ? budgets.get(c.id) : null;
-      const annual = annualBudgets.get(c.id) || 0;
+      // A budget on a group is a cap over its children, reported separately --
+      // so a group-filed row carries no budget of its own, or the cap would be
+      // counted twice: once as the cap and once as this row's allowance.
+      const budgeted = !filedOnGroup && budgets.has(c.id) ? budgets.get(c.id) : null;
+      const annual = filedOnGroup ? 0 : annualBudgets.get(c.id) || 0;
 
       return {
         category_id: c.id,
-        name: c.name,
-        group: c.group_name,
-        group_id: c.group_id,
+        // A group-filed transaction is real money with no child to sit under.
+        // Naming it plainly is better than inventing a category or hiding it.
+        name: filedOnGroup ? `${c.name} — unspecified` : c.name,
+        group: filedOnGroup ? c.name : c.group_name,
+        group_id: filedOnGroup ? c.id : c.group_id,
+        filed_on_group: filedOnGroup,
         budgeted,
         annual_budget: annual || null,
         actual: round2(actual),

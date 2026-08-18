@@ -153,7 +153,19 @@ function reportData(options = {}) {
       by_type: nw.by_type,
     },
     caveats,
+    // Household facts no ledger can hold: a job ending, a cost about to stop, a
+    // one-off already known about. Without these the reviewer reasons from the
+    // numbers alone and reaches confident wrong conclusions -- the July 2026
+    // review inferred a rental vacancy from an income drop that was actually a
+    // final part-month paycheck.
+    household_context: context(),
   };
+}
+
+/** Free-text notes the household has recorded, sent with every review. */
+function context() {
+  const row = db.prepare("SELECT value FROM settings WHERE key = 'report_context'").get();
+  return row && row.value ? row.value : null;
 }
 
 module.exports = { reportData, periodBounds };

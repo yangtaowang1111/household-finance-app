@@ -11,6 +11,12 @@ const pct = (n) => `${n.toFixed(1)}%`;
     returns here. */
 const txnLink = (filters) => {
   const params = new URLSearchParams();
+  // The period travels with the link, so a figure clicked on the Overview opens
+  // the same slice of time rather than everything.
+  const year = $('ov-year') && $('ov-year').value;
+  const month = $('ov-month') && $('ov-month').value;
+  if (year) params.set('year', year);
+  if (month) params.set('month', month);
   for (const [k, v] of Object.entries(filters)) if (v) params.set(k, v);
   return `transactions.html?${params}`;
 };
@@ -257,32 +263,55 @@ function renderAttention(items) {
 
 /* --- load ----------------------------------------------------------------- */
 
-function yearStart() {
-  return `${new Date().getFullYear()}-01-01`;
-}
+/* The period on screen, as bounds and as a label.
+ *
+ * Both are derived from the selected strings and never by parsing a date, which
+ * is where the previous label came from and why it read "2025 to date" all of
+ * 2026: new Date("2026-01-01") is UTC midnight, and in Denver that is the 31st
+ * of December. The figures were always right — only the words above them were
+ * wrong — but a heading that disagrees with its own numbers is worse than no
+ * heading. */
+function selectedPeriod() {
+  const year = Number($('ov-year').value) || new Date().getFullYear();
+  const month = Number($('ov-month').value) || null;
+  const now = new Date();
+  const isCurrentYear = year === now.getFullYear();
 
-function tomorrow() {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return d.toISOString().slice(0, 10);
+  if (month) {
+    const next = month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, '0')}-01`;
+    return {
+      from: `${year}-${String(month).padStart(2, '0')}-01`,
+      to: next,
+      label: `${new Date(2000, month - 1, 1).toLocaleDateString('en-US', { month: 'long' })} ${year}`,
+    };
+  }
+
+  // Tomorrow, not today: the upper bound is exclusive, so today's own
+  // transactions would otherwise be left out of the current year.
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  return {
+    from: `${year}-01-01`,
+    to: isCurrentYear ? tomorrow.toISOString().slice(0, 10) : `${year + 1}-01-01`,
+    label: isCurrentYear ? `${year} to date` : String(year),
+  };
 }
 
 async function load() {
   $('greeting').textContent = greeting();
-  const from = yearStart();
+  const period = selectedPeriod();
 
   try {
     const [nw, history, cf, txns] = await Promise.all([
       api('/networth'),
-      api(`/networth/history?from=${from}`),
-      // Exclusive upper bound, so "to" must be the day after today for today's
-      // own transactions to be included.
-      api(`/cashflow?from=${from}&to=${tomorrow()}`),
+      api(`/networth/history?from=${period.from}`),
+      api(`/cashflow?from=${period.from}&to=${period.to}`),
       api('/transactions?limit=10'),
     ]);
 
     renderNetWorth(nw, history);
-    renderCashflow(cf, `${new Date(from).getFullYear()} to date`);
+    renderCashflow(cf, period.label);
     renderSpending(cf);
     renderAccounts(nw);
     renderProperty(nw);
@@ -352,4 +381,22 @@ async function load() {
   }
 }
 
-startPage(load);
+startPage(async () => {
+  const thisYear = new Date().getFullYear();
+  const years = await api('/transactions/years').catch(() => [thisYear]);
+
+  $('ov-year').innerHTML = (years.length ? years : [thisYear])
+    .map((y) => `<option value="${y}">${y}</option>`)
+    .join('');
+  $('ov-year').value = years.includes(thisYear) ? thisYear : years[0];
+
+  $('ov-month').innerHTML =
+    '<option value="">Whole year</option>' +
+    Array.from({ length: 12 }, (_, i) => i + 1)
+      .map((m) => `<option value="${m}">${new Date(2000, m - 1, 1).toLocaleDateString('en-US', { month: 'long' })}</option>`)
+      .join('');
+
+  $('ov-year').addEventListener('change', load);
+  $('ov-month').addEventListener('change', load);
+  load();
+});

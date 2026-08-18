@@ -654,3 +654,14 @@ svg.mini { width: 68px; height: 28px; display: block; }
 }
 .amount-range input { border: 0 !important; width: 84px; }
 .amount-range input:focus { outline: none; }
+
+/* Period selects in a page head, matching the filter controls elsewhere. */
+.page-head select {
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+}

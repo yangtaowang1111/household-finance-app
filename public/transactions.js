@@ -12,7 +12,7 @@ const selected = new Set();
 /* Kept in the query string rather than in memory so the Overview can link
    straight to a filtered view, the back button works, and a filtered list can
    be bookmarked or sent to someone. */
-const FILTERS = ['search', 'group', 'account_id', 'month', 'min_amount', 'max_amount', 'needs_review', 'uncategorized', 'possible_duplicates'];
+const FILTERS = ['search', 'group', 'account_id', 'year', 'month', 'min_amount', 'max_amount', 'needs_review', 'uncategorized', 'possible_duplicates'];
 
 function readFilters() {
   const params = new URLSearchParams(location.search);
@@ -31,6 +31,7 @@ function currentFilters() {
   if ($('f-search').value.trim()) f.search = $('f-search').value.trim();
   if ($('f-group').value) f.group = $('f-group').value;
   if ($('f-account').value) f.account_id = $('f-account').value;
+  if ($('f-year').value) f.year = $('f-year').value;
   if ($('f-month').value) f.month = $('f-month').value;
   if ($('f-min').value) f.min_amount = $('f-min').value;
   if ($('f-max').value) f.max_amount = $('f-max').value;
@@ -44,6 +45,7 @@ function applyFiltersToControls(f) {
   $('f-search').value = f.search || '';
   $('f-group').value = f.group || '';
   $('f-account').value = f.account_id || '';
+  $('f-year').value = f.year || '';
   $('f-month').value = f.month || '';
   $('f-min').value = f.min_amount || '';
   $('f-max').value = f.max_amount || '';
@@ -57,6 +59,10 @@ function describe(f) {
   if (f.needs_review) return 'Needs review';
   if (f.uncategorized) return 'Uncategorised';
   if (f.possible_duplicates) return 'Possible duplicates';
+  const monthName = (m) => new Date(2000, Number(m) - 1, 1).toLocaleDateString('en-US', { month: 'long' });
+  if (f.year && f.month) return `${monthName(f.month)} ${f.year}`;
+  if (f.year) return `${f.year}`;
+  if (f.month) return `${monthName(f.month)}, every year`;
   if (f.min_amount && f.max_amount) {
     return f.min_amount === f.max_amount
       ? `Exactly $${f.min_amount}`
@@ -142,7 +148,7 @@ function renderRow(t) {
 
   return `<tr class="${flagged ? 'flagged' : ''}">
     <td class="pick"><input type="checkbox" data-pick="${t.id}" ${selected.has(t.id) ? 'checked' : ''} aria-label="Select"></td>
-    <td class="mono">${shortDate(t.date)}</td>
+    <td class="mono">${shortDate(t.date)}, ${t.date.slice(0, 4)}</td>
     <td class="desc">
       ${escapeHtml((t.payee || t.merchant_raw || '').slice(0, 64))}
       ${note ? `<div class="sub">${escapeHtml(note)}</div>` : ''}
@@ -314,14 +320,14 @@ function toast(message) {
 /* --- load ----------------------------------------------------------------- */
 
 function monthOptions() {
-  const months = [];
-  const now = new Date();
-  for (let i = 0; i < 20; i += 1) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    months.push(`<option value="${iso}">${d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</option>`);
-  }
-  return months.join('');
+  return Array.from({ length: 12 }, (_, i) => i + 1)
+    .map((m) => `<option value="${m}">${new Date(2000, m - 1, 1).toLocaleDateString('en-US', { month: 'long' })}</option>`)
+    .join('');
+}
+
+/** Years taken from the ledger, so the list never offers an empty one. */
+function yearOptions(years) {
+  return years.map((y) => `<option value="${y}">${y}</option>`).join('');
 }
 
 async function loadReferenceData() {
@@ -345,6 +351,9 @@ async function loadReferenceData() {
     accounts.map((a) => `<option value="${a.id}">${escapeHtml(a.nickname || a.name)}</option>`).join('');
 
   $('f-month').innerHTML = '<option value="">All months</option>' + monthOptions();
+
+  const years = await api('/transactions/years').catch(() => []);
+  $('f-year').innerHTML = '<option value="">All years</option>' + yearOptions(years);
   $('bulk-cat').innerHTML = '<option value="">Move to category…</option>' + categoryOptions(null);
 }
 
@@ -375,7 +384,7 @@ function wire() {
     clearTimeout(debounce);
     debounce = setTimeout(load, 250);
   });
-  ['f-group', 'f-account', 'f-month', 'f-min', 'f-max', 'f-review', 'f-uncat', 'f-dupes'].forEach((id) =>
+  ['f-group', 'f-account', 'f-year', 'f-month', 'f-min', 'f-max', 'f-review', 'f-uncat', 'f-dupes'].forEach((id) =>
     $(id).addEventListener('change', load)
   );
 

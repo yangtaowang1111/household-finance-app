@@ -369,3 +369,59 @@ test('search reaches notes, not only the bank descriptor', async () => {
   assert.equal(r.body.length, 1);
   assert.match(r.body[0].merchant_raw, /LEGACY RIDGE/);
 });
+
+// --- year and month ---------------------------------------------------------
+
+test('a month with no year spans every year', async () => {
+  // The comparison this exists for: the same month against itself across years.
+  db.prepare(
+    "INSERT INTO transactions (account_id, date, amount, merchant_raw, source) VALUES (?, '2025-03-15', -100, 'MARCH 2025', 'csv_import')"
+  ).run(accountId);
+  db.prepare(
+    "INSERT INTO transactions (account_id, date, amount, merchant_raw, source) VALUES (?, '2026-03-15', -100, 'MARCH 2026', 'csv_import')"
+  ).run(accountId);
+  db.prepare(
+    "INSERT INTO transactions (account_id, date, amount, merchant_raw, source) VALUES (?, '2026-04-15', -100, 'APRIL 2026', 'csv_import')"
+  ).run(accountId);
+
+  const r = await call('GET', '/api/transactions?month=3');
+  assert.equal(r.body.length, 2);
+  assert.deepEqual(r.body.map((t) => t.date.slice(0, 4)).sort(), ['2025', '2026']);
+});
+
+test('a year with no month covers the whole year', async () => {
+  db.prepare(
+    "INSERT INTO transactions (account_id, date, amount, merchant_raw, source) VALUES (?, '2026-01-15', -100, 'JAN', 'csv_import')"
+  ).run(accountId);
+  db.prepare(
+    "INSERT INTO transactions (account_id, date, amount, merchant_raw, source) VALUES (?, '2026-11-15', -100, 'NOV', 'csv_import')"
+  ).run(accountId);
+  db.prepare(
+    "INSERT INTO transactions (account_id, date, amount, merchant_raw, source) VALUES (?, '2025-06-15', -100, 'LAST YEAR', 'csv_import')"
+  ).run(accountId);
+
+  const r = await call('GET', '/api/transactions?year=2026');
+  assert.equal(r.body.length, 2);
+  assert.ok(r.body.every((t) => t.date.startsWith('2026')));
+});
+
+test('a single-digit month matches a zero-padded date', async () => {
+  db.prepare(
+    "INSERT INTO transactions (account_id, date, amount, merchant_raw, source) VALUES (?, '2026-03-15', -100, 'MARCH', 'csv_import')"
+  ).run(accountId);
+
+  const r = await call('GET', '/api/transactions?year=2026&month=3');
+  assert.equal(r.body.length, 1);
+});
+
+test('the years list reports only years that have transactions', async () => {
+  db.prepare(
+    "INSERT INTO transactions (account_id, date, amount, merchant_raw, source) VALUES (?, '2026-03-15', -100, 'X', 'csv_import')"
+  ).run(accountId);
+  db.prepare(
+    "INSERT INTO transactions (account_id, date, amount, merchant_raw, source) VALUES (?, '2024-03-15', -100, 'Y', 'csv_import')"
+  ).run(accountId);
+
+  const r = await call('GET', '/api/transactions/years');
+  assert.deepEqual(r.body, [2026, 2024], 'newest first, and no empty years between');
+});

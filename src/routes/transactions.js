@@ -5,7 +5,7 @@ const { rulePatternFor } = require('../services/categorizer');
 const router = express.Router();
 
 router.get('/', (req, res) => {
-  const { account_id, category_id, month, pending, possible_duplicates } = req.query;
+  const { account_id, category_id, year, month, pending, possible_duplicates } = req.query;
   const clauses = [];
   const params = [];
 
@@ -17,9 +17,17 @@ router.get('/', (req, res) => {
     clauses.push('t.category_id = ?');
     params.push(category_id);
   }
+  // Year and month are independent, which is what makes the useful combinations
+  // possible: a year on its own, a month on its own (March in every year, for
+  // comparing a season against itself), both together for one month, or neither
+  // for everything.
+  if (year) {
+    clauses.push("strftime('%Y', t.date) = ?");
+    params.push(String(year));
+  }
   if (month) {
-    clauses.push("strftime('%Y-%m', t.date) = ?");
-    params.push(month);
+    clauses.push("strftime('%m', t.date) = ?");
+    params.push(String(month).padStart(2, '0'));
   }
   if (pending !== undefined) {
     clauses.push('t.pending = ?');
@@ -234,6 +242,17 @@ router.patch('/:id/confirm', (req, res) => {
     .run(req.params.id);
   if (result.changes === 0) return res.status(404).json({ error: 'transaction not found' });
   res.json(db.prepare('SELECT * FROM transactions WHERE id = ?').get(req.params.id));
+});
+
+// Years that actually have transactions, so a year filter never offers an empty
+// one or omits a populated one.
+router.get('/years', (req, res) => {
+  res.json(
+    db
+      .prepare("SELECT DISTINCT CAST(strftime('%Y', date) AS INTEGER) AS year FROM transactions ORDER BY year DESC")
+      .all()
+      .map((r) => r.year)
+  );
 });
 
 // Everything a given rule would catch. Answers "what else does this affect?"

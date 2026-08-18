@@ -642,3 +642,15 @@ svg.mini { width: 68px; height: 28px; display: block; }
   padding: 1px 4px;
   border-radius: 3px;
 }
+
+/* Min and max together read as one control, because they are one question. */
+.amount-range {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0 6px 0 0;
+}
+.amount-range input { border: 0 !important; width: 84px; }
+.amount-range input:focus { outline: none; }

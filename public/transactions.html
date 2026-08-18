@@ -50,11 +50,16 @@
 
     <section class="card" style="margin-bottom:14px">
       <div class="filters">
-        <input id="f-search" type="search" placeholder="Search descriptions…" autocomplete="off">
+        <input id="f-search" type="search" placeholder="Search descriptions and notes…" autocomplete="off">
         <select id="f-group"><option value="">All groups</option></select>
         <select id="f-account"><option value="">All accounts</option></select>
         <select id="f-month"><option value="">All months</option></select>
-        <input id="f-min" type="number" inputmode="decimal" placeholder="Min $" min="0" step="10">
+        <span class="amount-range">
+          <input id="f-min" type="number" inputmode="decimal" placeholder="Min $" min="0" step="10">
+          <span class="sub">to</span>
+          <input id="f-max" type="number" inputmode="decimal" placeholder="Max $" min="0" step="10">
+          <button id="f-exact" class="confirm" title="Copy the minimum into the maximum, to find one exact amount">exact</button>
+        </span>
         <label class="check"><input type="checkbox" id="f-review"> Needs review</label>
         <label class="check"><input type="checkbox" id="f-uncat"> Uncategorised</label>
         <label class="check"><input type="checkbox" id="f-dupes"> Possible duplicates</label>

@@ -12,7 +12,7 @@ const selected = new Set();
 /* Kept in the query string rather than in memory so the Overview can link
    straight to a filtered view, the back button works, and a filtered list can
    be bookmarked or sent to someone. */
-const FILTERS = ['search', 'group', 'account_id', 'month', 'min_amount', 'needs_review', 'uncategorized', 'possible_duplicates'];
+const FILTERS = ['search', 'group', 'account_id', 'month', 'min_amount', 'max_amount', 'needs_review', 'uncategorized', 'possible_duplicates'];
 
 function readFilters() {
   const params = new URLSearchParams(location.search);
@@ -33,6 +33,7 @@ function currentFilters() {
   if ($('f-account').value) f.account_id = $('f-account').value;
   if ($('f-month').value) f.month = $('f-month').value;
   if ($('f-min').value) f.min_amount = $('f-min').value;
+  if ($('f-max').value) f.max_amount = $('f-max').value;
   if ($('f-review').checked) f.needs_review = '1';
   if ($('f-uncat').checked) f.uncategorized = '1';
   if ($('f-dupes').checked) f.possible_duplicates = '1';
@@ -45,6 +46,7 @@ function applyFiltersToControls(f) {
   $('f-account').value = f.account_id || '';
   $('f-month').value = f.month || '';
   $('f-min').value = f.min_amount || '';
+  $('f-max').value = f.max_amount || '';
   $('f-review').checked = Boolean(f.needs_review);
   $('f-uncat').checked = Boolean(f.uncategorized);
   $('f-dupes').checked = Boolean(f.possible_duplicates);
@@ -55,6 +57,13 @@ function describe(f) {
   if (f.needs_review) return 'Needs review';
   if (f.uncategorized) return 'Uncategorised';
   if (f.possible_duplicates) return 'Possible duplicates';
+  if (f.min_amount && f.max_amount) {
+    return f.min_amount === f.max_amount
+      ? `Exactly $${f.min_amount}`
+      : `$${f.min_amount} to $${f.max_amount}`;
+  }
+  if (f.min_amount) return `Over $${f.min_amount}`;
+  if (f.max_amount) return `Under $${f.max_amount}`;
   if (f.account_id) {
     const a = accounts.find((x) => String(x.id) === String(f.account_id));
     return a ? (a.nickname || a.name) : 'Account';
@@ -366,9 +375,19 @@ function wire() {
     clearTimeout(debounce);
     debounce = setTimeout(load, 250);
   });
-  ['f-group', 'f-account', 'f-month', 'f-min', 'f-review', 'f-uncat', 'f-dupes'].forEach((id) =>
+  ['f-group', 'f-account', 'f-month', 'f-min', 'f-max', 'f-review', 'f-uncat', 'f-dupes'].forEach((id) =>
     $(id).addEventListener('change', load)
   );
+
+  // Exact match is min and max set to the same figure. Offered as a button
+  // because typing a number twice to mean "this one" is a poor way to ask.
+  $('f-exact').addEventListener('click', () => {
+    const value = $('f-min').value || $('f-max').value;
+    if (!value) return toast('Enter an amount first.');
+    $('f-min').value = value;
+    $('f-max').value = value;
+    load();
+  });
   $('f-clear').addEventListener('click', () => {
     applyFiltersToControls({});
     load();

@@ -36,7 +36,7 @@ router.get('/', (req, res) => {
   // name, catching every child under it — the Overview's spending breakdown is
   // by group, so clicking "Food" has to reach Groceries, Dining Out and Coffee
   // rather than only rows filed on the group itself.
-  const { group, uncategorized, needs_review, min_amount, search } = req.query;
+  const { group, uncategorized, needs_review, min_amount, max_amount, search } = req.query;
 
   if (group) {
     clauses.push('COALESCE(parent.name, c.name) = ?');
@@ -48,17 +48,35 @@ router.get('/', (req, res) => {
   if (needs_review !== undefined && needs_review !== '0' && needs_review !== 'false') {
     clauses.push('t.needs_review = 1');
   }
+  // A minimum and a maximum, either or both. Together they cover every way of
+  // asking: min alone is "over", max alone is "under", both is a range, and the
+  // same number in both is an exact match.
+  //
+  // Both work on absolute value, because "everything over $1,000" means large in
+  // either direction -- the big inbound rows (a $78,299 equity event) are exactly
+  // the ones worth finding.
+  //
+  // Rounded to cents on both sides. Amounts are REAL, so an exact search for
+  // 2237.31 would otherwise miss a row stored as 2237.3099999999999.
   if (min_amount) {
-    // On absolute value: "everything over $1,000" means large in either
-    // direction, and the large inbound rows (a $78,299 equity event) are exactly
-    // the ones worth finding.
-    clauses.push('ABS(t.amount) >= ?');
+    clauses.push('ROUND(ABS(t.amount), 2) >= ROUND(?, 2)');
     params.push(Number(min_amount));
   }
+  if (max_amount) {
+    clauses.push('ROUND(ABS(t.amount), 2) <= ROUND(?, 2)');
+    params.push(Number(max_amount));
+  }
   if (search) {
-    clauses.push('(LOWER(COALESCE(t.merchant_raw, \'\')) LIKE ? OR LOWER(COALESCE(t.payee, \'\')) LIKE ?)');
+    // Notes too, not only the bank's descriptor. A note is where a human
+    // records what a transaction actually was -- "green fees, not gear" -- and
+    // that is often its only searchable trace.
+    clauses.push(
+      `(LOWER(COALESCE(t.merchant_raw, '')) LIKE ?
+        OR LOWER(COALESCE(t.payee, '')) LIKE ?
+        OR LOWER(COALESCE(t.notes, '')) LIKE ?)`
+    );
     const like = `%${String(search).toLowerCase()}%`;
-    params.push(like, like);
+    params.push(like, like, like);
   }
 
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';

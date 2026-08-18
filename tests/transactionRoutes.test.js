@@ -305,3 +305,67 @@ test('a pattern too short to be safe is not stored', async () => {
   assert.equal(r.body.rule_learned, null);
   assert.equal(db.prepare('SELECT COUNT(*) n FROM categorization_rules').get().n, 0);
 });
+
+// --- amount range -----------------------------------------------------------
+//
+// One minimum and one maximum, either or both, covers every way of asking:
+// over, under, between, and exactly.
+
+test('a maximum finds small transactions', async () => {
+  txn({ merchant: 'COFFEE' }); // -53.61
+  db.prepare(
+    "INSERT INTO transactions (account_id, date, amount, merchant_raw, source) VALUES (?, '2026-02-10', -4.00, 'RANGE BALLS', 'simplefin')"
+  ).run(accountId);
+
+  const r = await call('GET', '/api/transactions?max_amount=10');
+  assert.equal(r.body.length, 1);
+  assert.match(r.body[0].merchant_raw, /RANGE BALLS/);
+});
+
+test('a minimum and maximum together make a range', async () => {
+  db.prepare(
+    "INSERT INTO transactions (account_id, date, amount, merchant_raw, source) VALUES (?, '2026-02-10', -4.00, 'SMALL', 'simplefin')"
+  ).run(accountId);
+  txn({ merchant: 'MIDDLE' }); // -53.61
+  db.prepare(
+    "INSERT INTO transactions (account_id, date, amount, merchant_raw, source) VALUES (?, '2026-02-10', -9000, 'LARGE', 'simplefin')"
+  ).run(accountId);
+
+  const r = await call('GET', '/api/transactions?min_amount=10&max_amount=100');
+  assert.equal(r.body.length, 1);
+  assert.match(r.body[0].merchant_raw, /MIDDLE/);
+});
+
+test('the same figure in both finds one exact amount', async () => {
+  // The mortgage case: two nearly identical descriptors, told apart by amount.
+  db.prepare(
+    "INSERT INTO transactions (account_id, date, amount, merchant_raw, source) VALUES (?, '2026-07-01', -2237.31, 'US BANK HOME MTG 1176', 'simplefin')"
+  ).run(accountId);
+  db.prepare(
+    "INSERT INTO transactions (account_id, date, amount, merchant_raw, source) VALUES (?, '2026-07-01', -2864.62, 'US BANK HOME MTG 1308', 'simplefin')"
+  ).run(accountId);
+
+  const r = await call('GET', '/api/transactions?min_amount=2237.31&max_amount=2237.31');
+  assert.equal(r.body.length, 1);
+  assert.match(r.body[0].merchant_raw, /1176/);
+});
+
+test('an exact search survives floating point', async () => {
+  // Amounts are REAL. Without rounding on both sides, a stored 2237.3099999
+  // would not equal a searched 2237.31.
+  db.prepare(
+    'INSERT INTO transactions (account_id, date, amount, merchant_raw, source) VALUES (?, ?, ?, ?, ?)'
+  ).run(accountId, '2026-07-01', -(2237.30 + 0.01), 'PAYMENT', 'simplefin');
+
+  const r = await call('GET', '/api/transactions?min_amount=2237.31&max_amount=2237.31');
+  assert.equal(r.body.length, 1);
+});
+
+test('search reaches notes, not only the bank descriptor', async () => {
+  txn({ merchant: 'FSP*LEGACY RIDGE', notes: 'green fees, not gear' });
+  txn({ merchant: 'PGA TOUR SUPERSTORE' });
+
+  const r = await call('GET', '/api/transactions?search=green fees');
+  assert.equal(r.body.length, 1);
+  assert.match(r.body[0].merchant_raw, /LEGACY RIDGE/);
+});

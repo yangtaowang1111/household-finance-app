@@ -612,3 +612,6 @@ td.pace.cool { color: var(--pos); }
 tr.grouprow td { font-weight: 600; border-top: 1px solid var(--line); background: var(--line-soft); }
 tr.grouprow td:first-child { padding-left: 0; }
 td.child:first-child { padding-left: 16px; }
+
+/* A balance line small enough to sit inside a row. */
+svg.mini { width: 68px; height: 28px; display: block; }

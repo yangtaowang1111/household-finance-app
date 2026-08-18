@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Accounts — Ledger</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='4' fill='%234a9ba5'/></svg>">
+</head>
+<body>
+
+<div id="gate" class="gate" hidden>
+  <div class="card">
+    <div class="eyebrow">Ledger</div>
+    <h1 style="margin:6px 0 2px;font-size:17px">Enter API key</h1>
+    <p style="color:var(--muted);font-size:12px;margin:0">Stored in this browser only. It's the <code>API_KEY</code> from your <code>.env</code>.</p>
+    <input id="gate-key" type="password" autocomplete="off" spellcheck="false" placeholder="API key">
+    <button id="gate-go">Unlock</button>
+    <p id="gate-err" class="delta down" style="font-size:12px" hidden>That key was rejected.</p>
+  </div>
+</div>
+
+<div class="shell" id="app" hidden>
+  <nav class="sidebar">
+    <div class="brand">
+      <span class="brand-mark"></span>
+      <span>Ledger</span>
+      <span class="badge">self-hosted</span>
+    </div>
+    <a class="nav-item" href="index.html">Overview</a>
+    <a class="nav-item" href="transactions.html">Transactions</a>
+    <a class="nav-item" href="budget.html">Budget</a>
+    <a class="nav-item" href="#">Spending</a>
+    <a class="nav-item" href="accounts.html" aria-current="page">Accounts</a>
+    <a class="nav-item" href="investments.html">Investments</a>
+    <a class="nav-item" href="accounts.html#property">Property</a>
+    <a class="nav-item" href="#">Rules &amp; imports</a>
+    <div class="sidebar-foot" id="foot"></div>
+  </nav>
+
+  <main class="main">
+    <div id="errors"></div>
+
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">Accounts</div>
+        <h1 id="heading">Accounts</h1>
+      </div>
+    </div>
+
+    <section class="card" style="margin-bottom:14px">
+      <div class="goals-grid" id="totals"></div>
+    </section>
+
+    <div id="groups"><div class="skeleton">Loading…</div></div>
+  </main>
+</div>
+
+<!-- Editing an account: the fields a human owns, which sync never overwrites -->
+<div id="editor" class="modal" hidden>
+  <div class="modal-card card">
+    <div class="eyebrow">Edit account</div>
+    <div id="ed-what" style="font-weight:600;margin:6px 0 12px"></div>
+
+    <label class="field"><span>Nickname</span>
+      <input id="ed-nickname" type="text" placeholder="e.g. Emergency Fund"></label>
+    <label class="field"><span>Owner</span>
+      <input id="ed-owner" type="text" placeholder="e.g. Tony, Sophia, Household"></label>
+    <label class="field"><span>Type</span>
+      <select id="ed-type">
+        <option value="checking">Checking</option>
+        <option value="savings">Savings</option>
+        <option value="credit">Credit card</option>
+        <option value="investment">Investment</option>
+        <option value="mortgage">Mortgage</option>
+        <option value="loan">Loan</option>
+        <option value="property">Property</option>
+      </select></label>
+
+    <label class="field" id="ed-secured-wrap" hidden><span>Secured by</span>
+      <select id="ed-secured"><option value="">Not linked to a property</option></select></label>
+
+    <label class="field" id="ed-balance-wrap" hidden><span>Current value</span>
+      <input id="ed-balance" type="number" step="100">
+      <span class="sub" style="display:block;margin-top:4px">Records a dated snapshot, so net worth history keeps the change.</span></label>
+
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button id="ed-save">Save</button>
+      <button id="ed-cancel" class="ghost">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="common.js"></script>
+<script src="accounts.js"></script>
+</body>
+</html>

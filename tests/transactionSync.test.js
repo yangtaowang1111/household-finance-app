@@ -486,3 +486,55 @@ test('a missing or junk day count falls back to the default', () => {
 test('a nonsensical day count still yields a usable window', () => {
   assert.equal(resolveLookbackDays(-5), 1, 'never a backwards window');
 });
+
+// --- stale pending ----------------------------------------------------------
+//
+// Including pending charges means some will go missing without a matchable
+// twin. Whether that is safe to act on depends on whether the sync would have
+// SEEN the twin — not on age alone.
+
+test('a stale pending charge inside the window is expired, not left to double count', () => {
+  const pending = txn({ id: 'TRN-pending-old', amount: '-64.00', posted: 0, pending: true });
+  upsertTransactions(payload([pending]), { includePending: true });
+  // Backdate it beyond the settle window.
+  db.prepare("UPDATE transactions SET date = date('now', '-14 days') WHERE simplefin_id = ?").run('TRN-pending-old');
+
+  // It stops being returned, and nothing resembling it arrives.
+  const result = upsertTransactions(payload([]), { includePending: true, windowStart: '2000-01-01' });
+
+  assert.equal(result.pendingExpired.length, 1);
+  assert.equal(result.unreconciledPending.length, 0);
+  assert.equal(allTxns().length, 0, 'the row is gone rather than counted forever');
+});
+
+test('a pending charge outside the window is reported, never deleted', () => {
+  const pending = txn({ id: 'TRN-pending-outside', amount: '-64.00', posted: 0, pending: true });
+  upsertTransactions(payload([pending]), { includePending: true });
+  db.prepare("UPDATE transactions SET date = date('now', '-60 days') WHERE simplefin_id = ?").run('TRN-pending-outside');
+
+  // A 30-day window would not have asked for its settled twin.
+  const windowStart = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const result = upsertTransactions(payload([]), { includePending: true, windowStart });
+
+  assert.equal(result.pendingExpired.length, 0, 'the twin may simply not have been requested');
+  assert.equal(result.unreconciledPending.length, 1);
+  assert.equal(allTxns().length, 1, 'and the row survives for a human to judge');
+});
+
+test('a recent pending charge is left alone to settle', () => {
+  // Dated today rather than using the fixture default, which is deliberately a
+  // week old and would therefore qualify as stale.
+  const pending = txn({
+    id: 'TRN-pending-fresh',
+    amount: '-64.00',
+    posted: 0,
+    pending: true,
+    transacted_at: Math.floor(Date.now() / 1000),
+  });
+  upsertTransactions(payload([pending]), { includePending: true });
+
+  const result = upsertTransactions(payload([]), { includePending: true, windowStart: '2000-01-01' });
+
+  assert.equal(result.pendingExpired.length, 0, 'too recent to judge — it may still post');
+  assert.equal(result.unreconciledPending.length, 1);
+});

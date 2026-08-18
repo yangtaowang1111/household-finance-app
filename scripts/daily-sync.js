@@ -82,6 +82,15 @@ async function main() {
         `looks like existing ${dup.existing_source} #${dup.duplicates_transaction_id} — review, nothing was deleted`
     );
   }
+  // Removed rather than reported: the window covered these dates, so a settled
+  // twin would have been returned if one existed. Listed anyway, because
+  // deleting a row silently is not the same as deleting it defensibly.
+  for (const item of transactions.pendingExpired || []) {
+    console.log(
+      `expired stale pending #${item.transaction_id} (${item.date} ${item.amount} ${item.merchant}) — ` +
+        'settled under a new id or cancelled; removed to avoid double counting'
+    );
+  }
   for (const item of transactions.unreconciledPending) {
     console.warn(`pending transaction #${item.transaction_id} (${item.date} ${item.amount} ${item.merchant}) no longer returned and unmatched`);
   }

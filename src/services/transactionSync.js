@@ -42,6 +42,19 @@ const MAX_BACKFILL_DAYS = 89;
 // reaching far enough to collide with the next visit to the same merchant.
 const SETTLE_WINDOW_DAYS = 7;
 
+// After this long, an unmatched pending row is expired rather than reported.
+//
+// The rule that makes this safe is not age alone but coverage: if the charge's
+// date sits inside the window this sync actually requested, then its settled
+// twin WOULD have been returned had it existed. So an unmatched pending row
+// inside the window has either settled under a new id -- in which case the
+// settled row is already recorded and the pending one is a double count -- or
+// was cancelled, in which case it never happened. Both mean delete.
+//
+// Outside the window, the original caution still holds: the settled twin may
+// simply not have been asked for, and the row is reported instead.
+const STALE_PENDING_DAYS = 7;
+
 // A hand-entered transaction is rarely dated to the day the bank posts it, so
 // the duplicate check tolerates a few days' drift.
 const MANUAL_DUPLICATE_WINDOW_DAYS = 3;
@@ -160,7 +173,7 @@ function flagIfDuplicatesManualEntry(row, syncedId) {
  * left alone and reported, because the cost of guessing wrong is a wrong
  * category on a real transaction plus a vanished pending row.
  */
-function reconcilePending(accountId, returnedIds, insertedRows, result) {
+function reconcilePending(accountId, returnedIds, insertedRows, result, windowStart) {
   const stalePending = selectPendingForAccount
     .all(accountId)
     .filter((row) => !returnedIds.has(row.simplefin_id));
@@ -217,8 +230,33 @@ function reconcilePending(accountId, returnedIds, insertedRows, result) {
     }
 
     if (!match) {
-      // Could be a cancelled authorization, or a settled row this run's window
-      // didn't cover. Either way, say so rather than deleting it.
+      // No settled twin found. Whether that is safe to act on depends entirely
+      // on whether this sync would have SEEN the twin.
+      const ageDays = (Date.now() - new Date(`${pendingRow.date}T12:00:00Z`).getTime()) / 86400000;
+      // Absent a known window, nothing is expired. Deleting on an assumption
+      // about what a caller asked for is precisely the wrong default: the cost
+      // of keeping a row too long is a visible warning, and the cost of
+      // deleting one wrongly is silent lost spending.
+      const coveredByWindow = Boolean(windowStart) && pendingRow.date >= windowStart;
+
+      if (coveredByWindow && ageDays >= STALE_PENDING_DAYS) {
+        // The window covered this date, so a settled twin would have been
+        // returned. It either settled under a new id -- and that row is already
+        // recorded, making this one a double count -- or it was cancelled and
+        // never happened. Both mean the pending row should go.
+        result.pendingExpired.push({
+          transaction_id: pendingRow.id,
+          date: pendingRow.date,
+          amount: pendingRow.amount,
+          merchant: pendingRow.merchant_raw,
+        });
+        deleteTransaction.run(pendingRow.id);
+        continue;
+      }
+
+      // Either too recent to judge, or outside what this run asked for -- in
+      // which case the settled twin may simply not have been requested. Say so
+      // rather than deleting it.
       result.unreconciledPending.push({
         transaction_id: pendingRow.id,
         date: pendingRow.date,
@@ -263,6 +301,7 @@ function upsertTransactions(remoteAccounts, options = {}) {
     accountsWithNoTransactions: 0,
     possibleDuplicates: [],
     unreconciledPending: [],
+    pendingExpired: [],
     unknownAccounts: [],
     skipped: [],
   };
@@ -344,7 +383,7 @@ function upsertTransactions(remoteAccounts, options = {}) {
     // Only meaningful when this run actually asked for pending transactions —
     // otherwise every pending row looks "missing" simply because we didn't ask.
     if (options.includePending) {
-      reconcilePending(local.id, returnedIds, insertedRows, result);
+      reconcilePending(local.id, returnedIds, insertedRows, result, options.windowStart);
     }
   }
 
@@ -407,7 +446,13 @@ async function syncAll(options = {}) {
     const accounts = options.skipAccounts
       ? { created: 0, updated: 0, needsReview: [], skipped: [] }
       : upsertAccounts(payload.accounts, options);
-    const transactions = upsertTransactions(payload.accounts, options);
+    // The window has to reach the reconciler: whether an unmatched pending row
+    // is safe to expire depends entirely on whether this sync would have seen
+    // its settled twin.
+    const transactions = upsertTransactions(payload.accounts, {
+      ...options,
+      windowStart: localDate(windowStart),
+    });
     return { accounts, transactions };
   });
 

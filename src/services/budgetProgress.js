@@ -44,6 +44,14 @@ function budgetProgress({ year, month }) {
   const toExclusive =
     lastMonth === 12 ? `${year + 1}-01-01` : `${year}-${String(lastMonth + 1).padStart(2, '0')}-01`;
 
+  // For a month still running, "expected" is a question of days: on 17 August a
+  // category that has used 55% of its August budget is exactly on plan, and
+  // flagging it would train the reader to ignore the flags.
+  const isCurrentMonth =
+    isMonth && now.getFullYear() === year && now.getMonth() + 1 === month;
+  const daysInMonth = new Date(year, isMonth ? month : 12, 0).getDate();
+  const periodElapsed = isCurrentMonth ? now.getDate() / daysInMonth : 1;
+
   const categories = db
     .prepare(
       `SELECT c.id, c.name, c.counts_as_spending, c.parent_category_id,
@@ -68,6 +76,19 @@ function budgetProgress({ year, month }) {
       .map((r) => [r.category_id, r.spent])
   );
 
+  // The full year, used as the denominator for pace and projection. The budget's
+  // own distribution is the expectation — for Taxes, being 100% "used" in April
+  // is exactly on plan, and a straight line would call it a catastrophe.
+  const annualBudgets = new Map(
+    db
+      .prepare(
+        `SELECT category_id, ROUND(SUM(budgeted_amount), 2) AS budgeted
+         FROM budgets WHERE month LIKE ? GROUP BY category_id`
+      )
+      .all(`${year}-%`)
+      .map((r) => [r.category_id, r.budgeted])
+  );
+
   const budgets = new Map(
     db
       .prepare(
@@ -80,6 +101,28 @@ function budgetProgress({ year, month }) {
       .map((r) => [r.category_id, r.budgeted])
   );
 
+  /**
+   * How fast a category is spending relative to plan, and where it lands if it
+   * carries on. Expressed against the budget's own distribution rather than a
+   * straight line, so a seasonal category is not perpetually "ahead".
+   */
+  function pacing(actual, budgeted, annual) {
+    if (!budgeted || budgeted <= 0) {
+      return { expected: null, pace: null, projected_year_end: null };
+    }
+    const expected = round2(budgeted * periodElapsed);
+    const pace = expected > 0 ? Math.round((actual / expected) * 100) / 100 : null;
+
+    // Where the year ends if the rest of it follows the plan from here. Only
+    // meaningful year-to-date; for a single month the question is not asked.
+    let projected = null;
+    if (!isMonth && annual > 0 && budgeted > 0) {
+      const shareOfYearBudgeted = budgeted / annual;
+      if (shareOfYearBudgeted > 0.05) projected = round2(actual / shareOfYearBudgeted);
+    }
+    return { expected, pace, projected_year_end: projected };
+  }
+
   const rows = categories
     .filter((c) => c.parent_category_id !== null && c.counts_as_spending)
     .map((c) => {
@@ -87,17 +130,21 @@ function budgetProgress({ year, month }) {
       // null, not zero: "no budget set" and "budgeted nothing" are different
       // claims, and only the second is an overspend when money is spent.
       const budgeted = budgets.has(c.id) ? budgets.get(c.id) : null;
+      const annual = annualBudgets.get(c.id) || 0;
+
       return {
         category_id: c.id,
         name: c.name,
         group: c.group_name,
         group_id: c.group_id,
         budgeted,
+        annual_budget: annual || null,
         actual: round2(actual),
         remaining: budgeted === null ? null : round2(budgeted - actual),
         used_percent: budgeted ? Math.round((actual / budgeted) * 100) : null,
         over: budgeted !== null && actual > budgeted,
         unbudgeted: budgeted === null && actual > 0,
+        ...pacing(actual, budgeted, annual),
       };
     })
     // A row with nothing budgeted and nothing spent has nothing to say. This

@@ -184,3 +184,54 @@ test('spending against a zero budget reads as over', () => {
   assert.equal(g.actual, 900);
   assert.equal(g.over, true);
 });
+
+// --- pace and projection ----------------------------------------------------
+//
+// A raw percentage is misleading mid-period: 70% of an annual budget is fine in
+// August and alarming in February. Pace is what a warning threshold should read.
+
+test('a completed period is paced against its whole budget', () => {
+  writePlan(2025, [{ category_id: categoryId('Groceries'), annual_amount: 12000 }]);
+  spend('Groceries', 2025, { 1: 1200 });
+
+  const g = cat(budgetProgress({ year: 2025, month: 1 }), 'Groceries');
+  assert.equal(g.expected, 1000, 'January is over, so the whole month was expected');
+  assert.equal(g.pace, 1.2, 'spending 20% faster than planned');
+});
+
+test('pace is measured against the plan, not a straight line', () => {
+  // Taxes budgets its whole year into April. Being 100% "used" in April is
+  // exactly on plan; a straight-line expectation would call it a 12x overspend.
+  const aprilOnly = [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0];
+  writePlan(2025, [{ category_id: categoryId('Taxes'), annual_amount: 8042, shape: aprilOnly }]);
+  spend('Taxes', 2025, { 4: 8042 });
+
+  const g = cat(budgetProgress({ year: 2025, month: 4 }), 'Taxes');
+  assert.equal(g.pace, 1, 'exactly on plan');
+  assert.equal(g.over, false);
+});
+
+test('year to date projects where the year lands', () => {
+  writePlan(2025, [{ category_id: categoryId('Groceries'), annual_amount: 12000 }]);
+  // A complete past year spending 15,000 against a 12,000 plan.
+  spend('Groceries', 2025, Object.fromEntries(Array.from({ length: 12 }, (_, i) => [i + 1, 1250])));
+
+  const g = cat(budgetProgress({ year: 2025 }), 'Groceries');
+  assert.equal(g.projected_year_end, 15000);
+  assert.equal(g.annual_budget, 12000);
+});
+
+test('a category with no budget has no pace to report', () => {
+  spend('Golf Gear', 2025, { 5: 480 });
+
+  const g = cat(budgetProgress({ year: 2025 }), 'Golf Gear');
+  assert.equal(g.pace, null, 'nothing to be fast or slow against');
+  assert.equal(g.projected_year_end, null);
+});
+
+test('a single month does not claim to project the year', () => {
+  writePlan(2025, [{ category_id: categoryId('Groceries'), annual_amount: 12000 }]);
+  spend('Groceries', 2025, { 3: 1000 });
+
+  assert.equal(cat(budgetProgress({ year: 2025, month: 3 }), 'Groceries').projected_year_end, null);
+});

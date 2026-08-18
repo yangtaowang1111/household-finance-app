@@ -480,6 +480,33 @@ const MIGRATIONS = [
       return ['reports table'];
     },
   },
+  {
+    version: 13,
+    name: 'period-notes',
+    up(db) {
+      // One note per month, attached to the month it describes.
+      //
+      // The first design was a single standing note carrying everything, and it
+      // does not survive contact with time: "no paycheck in August 2026" is
+      // essential in July 2026 and clutter forever after, so the note grows and
+      // nobody prunes it.
+      //
+      // Splitting by period fixes that without any pruning discipline. A fact
+      // pinned to the month it happened is never stale, because a review only
+      // reads the months it covers. Durable facts stay in settings, written
+      // once.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS period_notes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          period TEXT NOT NULL UNIQUE,
+          note TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      `);
+      return ['period_notes table'];
+    },
+  },
 ];
 
 const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

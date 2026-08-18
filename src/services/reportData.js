@@ -158,14 +158,33 @@ function reportData(options = {}) {
     // numbers alone and reaches confident wrong conclusions -- the July 2026
     // review inferred a rental vacancy from an income drop that was actually a
     // final part-month paycheck.
-    household_context: context(),
+    household_context: context(year, bounds.months[bounds.months.length - 1]),
   };
 }
 
-/** Free-text notes the household has recorded, sent with every review. */
-function context() {
-  const row = db.prepare("SELECT value FROM settings WHERE key = 'report_context'").get();
-  return row && row.value ? row.value : null;
+/**
+ * What the household has recorded that no ledger holds.
+ *
+ * Two parts, because they age differently. The standing note is durable —
+ * escrowed insurance, payroll deductions the ledger never sees — and is written
+ * once. Period notes are pinned to the month they describe, so they are never
+ * stale: a review simply does not read months it does not cover.
+ *
+ * Notes from earlier in the same year are included, because continuity matters
+ * within a year — a December review should know the job changed in July — while
+ * a year is a natural boundary at which context stops accumulating.
+ */
+function context(year, throughMonth) {
+  const standing = db.prepare("SELECT value FROM settings WHERE key = 'report_context'").get();
+  const notes = db
+    .prepare('SELECT period, note FROM period_notes WHERE period >= ? AND period <= ? ORDER BY period')
+    .all(`${year}-01`, `${year}-${String(throughMonth).padStart(2, '0')}`);
+
+  if (!standing?.value && !notes.length) return null;
+  return {
+    always_true: standing && standing.value ? standing.value : null,
+    by_month: notes.map((n) => ({ month: n.period, note: n.note })),
+  };
 }
 
 module.exports = { reportData, periodBounds };

@@ -7,6 +7,7 @@
 
 let kind = 'month';
 let history = [];
+let notes = [];
 
 /* A very small markdown renderer — headings, bold, italics, lists, code.
    Enough for what the model is asked to produce, and worth 30 lines to avoid a
@@ -205,10 +206,62 @@ function toast(message) {
   toastTimer = setTimeout(() => { el.hidden = true; }, 4000);
 }
 
+/* --- context ------------------------------------------------------------- */
+
+/* Two kinds of fact, kept apart because they age differently. The standing note
+   is durable and written once; a period note is pinned to the month it
+   describes and so is never stale — a review simply does not read months it
+   does not cover. */
+
+/** The month a period note attaches to. A quarter takes its last month. */
+function notePeriod() {
+  const year = Number($('year').value);
+  const value = Number($('period').value);
+  const month = kind === 'quarter' ? value * 3 : value;
+  return `${year}-${String(month).padStart(2, '0')}`;
+}
+
+function renderNoteEditor() {
+  const period = notePeriod();
+  const existing = notes.find((n) => n.period === period);
+  const [y, m] = period.split('-');
+  $('note-period').textContent = new Date(Number(y), Number(m) - 1, 1)
+    .toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  $('period-note').value = existing ? existing.note : '';
+  $('note-status').textContent = existing ? `saved ${existing.updated_at.slice(0, 10)}` : '';
+
+  // The year's other notes, so it is obvious what a review will already know
+  // and nothing gets written twice.
+  const others = notes.filter((n) => n.period !== period);
+  $('notes-year').innerHTML = others.length
+    ? `<div class="eyebrow" style="margin-bottom:6px">Other notes this year — a review reads these too</div>` +
+      others
+        .map(
+          (n) => `<div class="row" style="padding:6px 0">
+            <div><span class="label">${escapeHtml(n.period)}</span>
+              <div class="sub">${escapeHtml(n.note.slice(0, 110))}${n.note.length > 110 ? '…' : ''}</div></div>
+          </div>`
+        )
+        .join('')
+    : '';
+}
+
+async function saveNote() {
+  const period = notePeriod();
+  try {
+    await api(`/notes/${period}`, { method: 'PUT', body: { note: $('period-note').value } });
+    notes = await api(`/notes?year=${$('year').value}`);
+    renderNoteEditor();
+    toast(`Note saved for ${period}.`);
+  } catch (err) {
+    toast(`Couldn't save: ${err.message}`);
+  }
+}
+
 async function saveContext() {
   try {
     await api('/settings', { method: 'PUT', body: { report_context: $('report-context').value.trim() || null } });
-    toast('Context saved — it goes with every review from now on.');
+    toast('Standing context saved — it goes with every review.');
   } catch (err) {
     toast(`Couldn't save: ${err.message}`);
   }
@@ -216,9 +269,15 @@ async function saveContext() {
 
 async function load() {
   try {
-    const settings = await api('/settings').catch(() => ({}));
+    const [settings, yearNotes, reportList] = await Promise.all([
+      api('/settings').catch(() => ({})),
+      api(`/notes?year=${$('year').value}`).catch(() => []),
+      api('/reports?limit=50'),
+    ]);
     if (settings.report_context) $('report-context').value = settings.report_context;
-    history = await api('/reports?limit=50');
+    notes = yearNotes;
+    history = reportList;
+    renderNoteEditor();
     renderHistory();
     $('foot').textContent = `${history.length} reviews`;
   } catch (err) {
@@ -238,13 +297,22 @@ startPage(() => {
     $('kind-quarter').classList.toggle('on', next === 'quarter');
     $('period').innerHTML = periodOptions();
     $('preview-out').innerHTML = '';
+    renderNoteEditor();
   };
   $('kind-month').addEventListener('click', () => setKind('month'));
   $('kind-quarter').addEventListener('click', () => setKind('quarter'));
-  $('year').addEventListener('change', () => { $('period').innerHTML = periodOptions(); });
+  $('year').addEventListener('change', async () => {
+    $('period').innerHTML = periodOptions();
+    notes = await api(`/notes?year=${$('year').value}`).catch(() => []);
+    renderNoteEditor();
+  });
   $('preview').addEventListener('click', preview);
   $('generate').addEventListener('click', () => generate(false));
   $('save-context').addEventListener('click', saveContext);
+  $('save-note').addEventListener('click', saveNote);
+  // The note editor follows whichever period is selected, so writing a note and
+  // reviewing that period are the same gesture.
+  $('period').addEventListener('change', renderNoteEditor);
 
   load();
 });

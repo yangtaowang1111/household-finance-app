@@ -194,3 +194,17 @@ CREATE TABLE IF NOT EXISTS reports (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(period_from, kind)
 );
+
+-- One note per month ('2026-07'), describing what the ledger cannot show about
+-- that month. A single standing note does not survive contact with time -- "no
+-- paycheck in August 2026" is essential in July and clutter forever after -- so
+-- time-bound facts are pinned to the month they belong to and durable ones live
+-- in `settings`. A review reads the standing note plus that year's notes up to
+-- the period it covers.
+CREATE TABLE IF NOT EXISTS period_notes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  period TEXT NOT NULL UNIQUE,
+  note TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);

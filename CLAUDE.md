@@ -134,6 +134,11 @@ until then.
 
 **Done when:** you're checking the app instead of the API directly.
 
+Section-by-section scope, the order it gets built in, and the decisions behind
+it: **[docs/roadmap.md](docs/roadmap.md)**. Iteration 1 is deliberately narrow —
+spending, budget, net worth, investments — with reporting next and retirement
+after it.
+
 ### Phase 4b — Native app (optional, later)
 - Expo screens against the same API and database
 - PIN or biometric unlock, push notifications

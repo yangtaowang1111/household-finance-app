@@ -151,7 +151,20 @@ deltas, savings rate), never raw transactions: cheaper, and the analysis is
 better for it. Output is analysis to consider, not instructions to follow.
 
 **Retirement (after reporting).** Blocked on data more than on code — see gaps
-below.
+below. Two decisions already taken:
+
+- **Statements are an acceptable substitute for syncing.** Employer plans often
+  cannot be linked at all; a quarterly PDF or CSV entered by hand keeps the
+  balance roughly current, which is all a retirement projection needs. The
+  statement importer already handles per-account files.
+- **A pension is an income source, not a balance.** It needs its own shape —
+  monthly amount and a start date — rather than being forced into `accounts`.
+
+**401(k) deferrals are invisible to the ledger.** Payroll takes them from gross
+pay before anything reaches a bank, so they appear in neither income nor
+spending, and the savings rate is understated by exactly the amount being saved
+hardest. Handled by asking: gross salary and deferral percentage are stored in
+`settings` and added back on the budget screen. Two numbers a year.
 
 **Recurring & subscriptions.** Already in the original brief's Build list and
 never built. Finds forgotten subscriptions, and is the foundation Phase 5 needs:
@@ -179,7 +192,7 @@ These limit what any of the above can honestly report.
 |---|---|
 | **Sophia's 401(k)** | Employer plan, not connected. May not be linkable if it is an internal recordkeeper. |
 | **Tony's new 401(k)** | New employer, not yet set up. |
-| **Colorado PERA pension** | From the job Tony left in July 2026. **Not an account with a balance** — it is a defined-benefit entitlement, and its worth is a future income stream. Modelling it as a balance would understate it badly. Needs its own treatment in the Retirement section. |
+| **Colorado PERA pension** | From the job Tony left in July 2026. **Not an account with a balance** — it is a defined-benefit entitlement, and its worth is a future income stream. Agreed 2026-08-17: Tony runs PERA's own calculator (contributions, service term, start date, retirement date) and enters the resulting **monthly income figure** as a retirement income source. Approximate is fine — it is for planning, not reporting. It stays **out of net worth**, which should hold only what could actually be sold or spent. |
 | **Sophia's Vanguard** | Two IRAs, ~$7,500 this year. Outstanding. |
 | **Sophia's four cards** | No 2026 data at all; they do not sync. Ongoing, not just historical — see [project-status.md](project-status.md). |
 

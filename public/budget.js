@@ -9,6 +9,8 @@
  * Nothing is written until Save. The whole point is to try numbers on. */
 
 let data = null;
+let settings = {};
+let context = null; // income, emergency fund balance — things the budget is measured against
 const chosen = new Map(); // category id -> annual amount
 
 const MAX_PERCENT = 200;
@@ -94,6 +96,79 @@ function visibleCategories() {
     .sort((a, b) => (chosen.get(b.id) ?? b.suggested_annual) - (chosen.get(a.id) ?? a.suggested_annual));
 }
 
+const num = (key) => {
+  const v = Number(settings[key]);
+  return Number.isFinite(v) && v > 0 ? v : 0;
+};
+
+/**
+ * The numbers the budget is actually for.
+ *
+ * Income is projected from what has been earned so far, scaled by the share of
+ * the year elapsed — deliberately crude, and stated as an assumption rather
+ * than hidden, because a mid-year job change makes anything cleverer a
+ * pretence at precision.
+ *
+ * 401(k) deferrals come from the assumptions rather than the ledger. Payroll
+ * takes them from gross pay before anything reaches a bank, so they are absent
+ * from both income and spending: without them the savings rate is understated
+ * by exactly the amount being saved hardest.
+ */
+function renderGoals() {
+  const budgeted = data.categories
+    .filter((c) => !c.is_group && c.counts_as_spending)
+    .reduce((s, c) => s + (chosen.get(c.id) ?? 0), 0);
+
+  const deferrals =
+    (num('gross_tony') * num('defer_tony')) / 100 + (num('gross_sophia') * num('defer_sophia')) / 100;
+
+  const netIncome = context ? context.projected_income : 0;
+  // Gross where it is known, because a deferral is part of what was earned.
+  const grossIncome = netIncome + deferrals;
+
+  const surplus = netIncome - budgeted;
+  const rate = grossIncome > 0 ? ((surplus + deferrals) / grossIncome) * 100 : null;
+
+  $('g-income').textContent = netIncome ? money(netIncome) : '—';
+  $('g-income-note').textContent = netIncome
+    ? deferrals
+      ? `${money(grossIncome)} gross, incl. ${money(deferrals)} deferred`
+      : `projected from ${context.months_elapsed} months`
+    : 'no income recorded yet';
+
+  $('g-spend').textContent = money(budgeted);
+
+  $('g-surplus').textContent = money(surplus);
+  $('g-surplus').className = `v num ${surplus < 0 ? 'bad' : 'good'}`;
+  $('g-surplus-note').textContent = surplus < 0 ? 'budget exceeds income' : 'income less budget';
+
+  const rateTarget = num('rate_target');
+  $('g-rate').textContent = rate === null ? '—' : `${rate.toFixed(1)}%`;
+  $('g-rate').className = `v num ${rate === null ? '' : rate < 0 ? 'bad' : rateTarget && rate >= rateTarget ? 'good' : ''}`;
+
+  // Months of the budget the emergency fund would cover. A more motivating
+  // framing than a percentage: cutting spending lengthens the runway.
+  const monthly = budgeted / 12;
+  const efMonths = context && monthly > 0 ? context.emergency_fund / monthly : null;
+  const efTarget = num('ef_target') || 6;
+  $('g-ef').textContent = efMonths === null ? '—' : `${efMonths.toFixed(1)} mo`;
+  $('g-ef').className = `v num ${efMonths === null ? '' : efMonths >= efTarget ? 'good' : efMonths < 3 ? 'bad' : ''}`;
+  $('g-ef-note').textContent = context
+    ? `${money(context.emergency_fund)} · target ${efTarget} months`
+    : 'months of budgeted spending';
+
+  // Contributions the ledger can see, plus deferrals it cannot.
+  const contributions = context ? context.contributions : 0;
+  const retirement = contributions + deferrals;
+  const retirementPct = grossIncome > 0 ? (retirement / grossIncome) * 100 : null;
+  $('g-ret').textContent = retirementPct === null ? '—' : `${retirementPct.toFixed(1)}%`;
+  $('g-ret-note').textContent = deferrals
+    ? `${money(contributions)} contributed + ${money(deferrals)} deferred`
+    : contributions
+      ? `${money(contributions)} contributed · add deferrals below`
+      : 'add salary and deferral % below';
+}
+
 function renderTotals() {
   const cats = data.categories.filter((c) => !c.is_group && c.counts_as_spending);
   const reference = cats.reduce((s, c) => s + c.reference_year.total, 0);
@@ -118,6 +193,7 @@ function render() {
     ? cats.map(renderRow).join('')
     : '<div class="skeleton">Nothing to show.</div>';
   renderTotals();
+  renderGoals();
   wireRows();
 }
 
@@ -147,6 +223,7 @@ function setAmount(id, annual, source) {
   }
 
   renderTotals();
+  renderGoals();
 }
 
 function wireRows() {
@@ -193,7 +270,33 @@ function toast(message) {
 
 async function load(year) {
   try {
-    data = await api(`/budgets/baseline?year=${year}`);
+    const [baseline, cashflow, accounts, loaded] = await Promise.all([
+      api(`/budgets/baseline?year=${year}`),
+      api(`/cashflow?from=${year}-01-01&to=${year + 1}-01-01`),
+      api('/accounts'),
+      api('/settings'),
+    ]);
+    data = baseline;
+    settings = loaded || {};
+
+    // Projected from the year so far. Crude on purpose — a mid-year job change
+    // makes anything more elaborate a pretence at precision, and the assumption
+    // is stated rather than buried.
+    const elapsed = baseline.months_elapsed || 12;
+    context = {
+      months_elapsed: elapsed,
+      projected_income: cashflow.income > 0 ? (cashflow.income / elapsed) * 12 : 0,
+      contributions: cashflow.saved > 0 ? (cashflow.saved / elapsed) * 12 : 0,
+      // Matched by nickname, which is how the Ally accounts got readable names
+      // from the statement filenames in the first place.
+      emergency_fund: accounts
+        .filter((a) => /emergency/i.test(a.nickname || a.name))
+        .reduce((s, a) => s + a.current_balance, 0),
+    };
+
+    for (const [key, id] of Object.entries(SETTING_FIELDS)) {
+      if (settings[key] !== undefined) $(id).value = settings[key];
+    }
     chosen.clear();
     for (const c of data.categories) {
       // An existing budget wins over a suggestion — a number already chosen is
@@ -209,6 +312,27 @@ async function load(year) {
   }
 }
 
+const SETTING_FIELDS = {
+  gross_tony: 's-gross-tony',
+  defer_tony: 's-defer-tony',
+  gross_sophia: 's-gross-sophia',
+  defer_sophia: 's-defer-sophia',
+  ef_target: 's-ef-target',
+  rate_target: 's-rate-target',
+};
+
+async function saveSettings() {
+  const body = {};
+  for (const [key, id] of Object.entries(SETTING_FIELDS)) body[key] = $(id).value.trim() || null;
+  try {
+    settings = await api('/settings', { method: 'PUT', body });
+    renderGoals();
+    toast('Assumptions saved.');
+  } catch (err) {
+    toast(`Couldn't save: ${err.message}`);
+  }
+}
+
 startPage(() => {
   const thisYear = new Date().getFullYear();
   $('year').innerHTML = [thisYear, thisYear + 1]
@@ -218,6 +342,15 @@ startPage(() => {
   $('year').addEventListener('change', () => load(Number($('year').value)));
   $('hide-empty').addEventListener('change', render);
   $('save').addEventListener('click', save);
+  $('save-settings').addEventListener('click', saveSettings);
+  // Live, so the goals move while the assumptions are being typed.
+  for (const id of Object.values(SETTING_FIELDS)) {
+    $(id).addEventListener('input', () => {
+      const key = Object.keys(SETTING_FIELDS).find((k) => SETTING_FIELDS[k] === id);
+      settings[key] = $(id).value;
+      renderGoals();
+    });
+  }
   $('accept-all').addEventListener('click', () => {
     for (const c of data.categories) chosen.set(c.id, Math.round(c.suggested_annual));
     render();

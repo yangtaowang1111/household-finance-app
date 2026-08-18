@@ -160,3 +160,13 @@ CREATE TABLE IF NOT EXISTS sync_runs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sync_runs_started ON sync_runs(started_at);
+
+-- Household facts no transaction can carry. Chiefly 401(k) deferral rates:
+-- payroll deducts them before the money reaches a bank, so they appear in
+-- neither income nor spending, and the savings rate is understated by exactly
+-- the amount being saved hardest.
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);

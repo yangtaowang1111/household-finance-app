@@ -53,6 +53,64 @@
       </div>
     </div>
 
+    <section class="card goals" style="margin-bottom:14px">
+      <div class="goals-grid">
+        <div>
+          <div class="eyebrow">Projected income</div>
+          <div class="v num" id="g-income">—</div>
+          <div class="sub" id="g-income-note"></div>
+        </div>
+        <div>
+          <div class="eyebrow">Budgeted spending</div>
+          <div class="v num" id="g-spend">—</div>
+        </div>
+        <div>
+          <div class="eyebrow">Surplus</div>
+          <div class="v num" id="g-surplus">—</div>
+          <div class="sub" id="g-surplus-note"></div>
+        </div>
+        <div>
+          <div class="eyebrow">Savings rate</div>
+          <div class="v num" id="g-rate">—</div>
+          <div class="sub">earned and not spent</div>
+        </div>
+        <div>
+          <div class="eyebrow">Emergency fund</div>
+          <div class="v num" id="g-ef">—</div>
+          <div class="sub" id="g-ef-note">months of budgeted spending</div>
+        </div>
+        <div>
+          <div class="eyebrow">Retirement + investing</div>
+          <div class="v num" id="g-ret">—</div>
+          <div class="sub" id="g-ret-note"></div>
+        </div>
+      </div>
+      <details id="assumptions">
+        <summary>Assumptions</summary>
+        <p class="note" style="margin-top:8px">
+          401(k) deferrals are taken from gross pay before anything reaches a
+          bank account, so they appear in neither income nor spending. Without
+          these, the savings rate is understated by exactly the amount being
+          saved hardest. Leave blank if you'd rather not.
+        </p>
+        <div class="assume-grid">
+          <label class="field"><span>Your gross salary</span>
+            <input type="number" id="s-gross-tony" placeholder="e.g. 150000" min="0" step="1000"></label>
+          <label class="field"><span>Your 401(k) deferral %</span>
+            <input type="number" id="s-defer-tony" placeholder="e.g. 10" min="0" max="100" step="0.5"></label>
+          <label class="field"><span>Sophia's gross salary</span>
+            <input type="number" id="s-gross-sophia" placeholder="optional" min="0" step="1000"></label>
+          <label class="field"><span>Sophia's 401(k) deferral %</span>
+            <input type="number" id="s-defer-sophia" placeholder="optional" min="0" max="100" step="0.5"></label>
+          <label class="field"><span>Emergency fund target (months)</span>
+            <input type="number" id="s-ef-target" placeholder="6" min="0" max="24" step="1"></label>
+          <label class="field"><span>Savings rate target %</span>
+            <input type="number" id="s-rate-target" placeholder="20" min="0" max="100" step="1"></label>
+        </div>
+        <button id="save-settings" class="ghost" style="margin-top:8px">Save assumptions</button>
+      </details>
+    </section>
+
     <section class="card" style="margin-bottom:14px">
       <div class="totals">
         <div>

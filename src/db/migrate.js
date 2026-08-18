@@ -403,6 +403,27 @@ const MIGRATIONS = [
       return added;
     },
   },
+  {
+    version: 10,
+    name: 'settings',
+    up(db) {
+      // Household facts the transaction data cannot contain.
+      //
+      // The motivating case is 401(k) deferrals: they are deducted from gross
+      // pay before anything reaches a bank account, so they appear in neither
+      // income nor spending. The savings rate is therefore understated by
+      // exactly the amount being saved hardest — invisible on both sides of the
+      // calculation. Two numbers a year fix it.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS settings (
+          key TEXT PRIMARY KEY,
+          value TEXT,
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      `);
+      return ['settings table'];
+    },
+  },
 ];
 
 const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

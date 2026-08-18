@@ -9,9 +9,11 @@
 // Three lines rather than two, because "income minus spending" hides the thing
 // most worth watching:
 //
-//   income   what came in
-//   spending what was consumed  (counts_as_spending = 1)
-//   saved    what was kept      (contributions — an asset, not an expense)
+//   income     what came in
+//   spending   what was consumed  (counts_as_spending = 1)
+//   surplus    income less spending — this is the savings rate
+//   saved      how much of the surplus actually moved into savings/investments
+//   unallocated the rest of it, still sitting in cash
 //
 // Transfers appear in neither total. Both legs are real transactions, so they
 // cancel; including them would double-count in one direction and cancel to noise
@@ -91,8 +93,18 @@ function cashflow({ from, to }) {
     income: round2(income),
     spending: round2(spending),
     saved: round2(saved),
+    // What was earned and not spent. This is the savings rate, and it is
+    // deliberately NOT contributions/income — a month spent frugally with no
+    // transfer made would report 0% under that definition while the cash
+    // balance climbed. It also has to match the budget screen, which can only
+    // know what a budget controls: income less spending.
+    surplus: round2(income - spending),
+    savings_rate: income > 0 ? round2(((income - spending) / income) * 100) : null,
+    // Where the surplus went. `saved` is what actually moved into savings and
+    // investments; `unallocated` is what stayed in cash. They sum to surplus,
+    // which is the reconciliation worth being able to see.
+    unallocated: round2(income - spending - saved),
     net: round2(income - spending - saved),
-    savings_rate: income > 0 ? round2((saved / income) * 100) : null,
     // Counted, not silently omitted: a summary built while rows are still
     // uncategorized is incomplete, and the reader should be able to tell.
     uncategorized_transactions: uncategorized,

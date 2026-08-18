@@ -84,19 +84,48 @@ test('a refund reduces spending rather than adding income', () => {
   assert.equal(r.income, 0, 'a positive amount in a spending group is not income');
 });
 
-test('reports the savings rate off income', () => {
+test('the savings rate is what was not spent, not what was transferred', () => {
   txn('2026-02-10', 10000, 'PAYROLL', "Tony's Paycheck");
   txn('2026-02-18', -2500, 'VANGUARD', 'Investment Contributions');
   txn('2026-02-20', -1000, 'RENT', 'Mortgage');
 
   const r = cashflow(WINDOW);
-  assert.equal(r.savings_rate, 25);
-  assert.equal(r.net, 6500, 'income less what was spent and what was put away');
+  assert.equal(r.surplus, 9000, 'earned less consumed');
+  assert.equal(r.savings_rate, 90);
+  assert.equal(r.saved, 2500, 'of which this much actually moved');
+  assert.equal(r.unallocated, 6500, 'and this much stayed in cash');
+});
+
+test('living below your means counts even with nothing transferred', () => {
+  // Under contributions/income this reads 0% while the cash balance climbs.
+  txn('2026-02-10', 10000, 'PAYROLL', "Tony's Paycheck");
+  txn('2026-02-20', -2000, 'RENT', 'Mortgage');
+
+  const r = cashflow(WINDOW);
+  assert.equal(r.savings_rate, 80);
+  assert.equal(r.saved, 0);
+  assert.equal(r.unallocated, 8000);
+});
+
+test('surplus reconciles to what moved plus what stayed', () => {
+  txn('2026-02-10', 10000, 'PAYROLL', "Tony's Paycheck");
+  txn('2026-02-18', -3000, 'VANGUARD', 'Investment Contributions');
+  txn('2026-02-20', -1000, 'RENT', 'Mortgage');
+
+  const r = cashflow(WINDOW);
+  assert.equal(r.saved + r.unallocated, r.surplus);
 });
 
 test('no income means no savings rate rather than a division by zero', () => {
   txn('2026-02-20', -1000, 'RENT', 'Mortgage');
   assert.equal(cashflow(WINDOW).savings_rate, null);
+});
+
+test('spending more than you earn is a negative savings rate', () => {
+  txn('2026-02-10', 5000, 'PAYROLL', "Tony's Paycheck");
+  txn('2026-02-20', -6000, 'RENT', 'Mortgage');
+
+  assert.equal(cashflow(WINDOW).savings_rate, -20);
 });
 
 test('rows outside the window are excluded', () => {

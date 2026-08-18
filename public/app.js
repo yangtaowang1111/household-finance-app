@@ -143,13 +143,13 @@ function renderCashflow(cf, label) {
       <div class="v num">${money(cf.spending)}</div>
     </div>
     <div class="row big-row">
-      <div><div class="label">Saved &amp; invested</div></div>
-      <div class="v num">${money(cf.saved)}</div>
+      <div><div class="label">Surplus</div>
+        <div class="sub">${money(cf.saved)} moved to savings · ${money(cf.unallocated, { showPlus: true })} still in cash</div></div>
+      <div class="v num">${money(cf.surplus)}</div>
     </div>
     <div class="row">
-      <div><div class="label" style="font-size:22px;font-weight:600" class="num">${cf.savings_rate === null ? '—' : pct(cf.savings_rate)}</div>
-        <div class="sub">savings rate</div></div>
-      <div class="v num" style="color:var(--muted);font-weight:500">${money(cf.net, { showPlus: true })} net</div>
+      <div><div class="label num" style="font-size:22px;font-weight:600">${cf.savings_rate === null ? '—' : pct(cf.savings_rate)}</div>
+        <div class="sub">savings rate — earned and not spent</div></div>
     </div>`;
 }
 

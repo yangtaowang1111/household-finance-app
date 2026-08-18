@@ -10,8 +10,12 @@ let rules = [];
 let categories = [];
 
 // Below this a pattern matches on very little, and is worth a second look
-// before it quietly files something it should not.
+// before it quietly files something it should not. Length is only a proxy —
+// plenty of real merchants have short names — so a rule can be accepted, and
+// then it stops being flagged. A warning that cannot be cleared gets ignored.
 const SHORT_PATTERN = 8;
+
+const needsLook = (r) => r.merchant_pattern.length < SHORT_PATTERN && !r.reviewed;
 
 function categoryOptions(selectedId) {
   const groups = {};
@@ -32,9 +36,9 @@ function renderRules() {
     ? rules.filter((r) => r.merchant_pattern.toLowerCase().includes(term))
     : rules;
 
-  const risky = rules.filter((r) => r.merchant_pattern.length < SHORT_PATTERN).length;
+  const risky = rules.filter(needsLook).length;
   $('rule-count').textContent =
-    `${shown.length} of ${rules.length}` + (risky ? ` · ${risky} shorter than ${SHORT_PATTERN} characters` : '');
+    `${shown.length} of ${rules.length}` + (risky ? ` · ${risky} short and unreviewed` : ' · all reviewed');
 
   if (!shown.length) {
     $('rules').innerHTML = '<div class="skeleton">No rules match.</div>';
@@ -58,23 +62,28 @@ function renderRules() {
   $('rules').querySelectorAll('[data-show]').forEach((el) =>
     el.addEventListener('click', () => showMatches(Number(el.dataset.show)))
   );
+  $('rules').querySelectorAll('[data-ok]').forEach((el) =>
+    el.addEventListener('click', () => update(Number(el.dataset.ok), { reviewed: true }))
+  );
   $('rules').querySelectorAll('[data-del]').forEach((el) =>
     el.addEventListener('click', () => remove(Number(el.dataset.del)))
   );
 }
 
 function renderRule(r) {
-  const short = r.merchant_pattern.length < SHORT_PATTERN;
-  return `<tr class="${short ? 'warn' : ''}">
+  const flagged = needsLook(r);
+  return `<tr class="${flagged ? 'warn' : ''}">
     <td class="desc">
       <span class="mono" style="font-size:12px;color:var(--text)">${escapeHtml(r.merchant_pattern)}</span>
-      ${short ? '<span class="tag unbudgeted">short</span>' : ''}
+      ${flagged ? `<span class="tag unbudgeted" title="Only ${r.merchant_pattern.length} characters — it may catch more than intended. Check &quot;matches&quot;, then accept it.">short</span>` : ''}
+      ${r.reviewed ? '<span class="tag" title="You have accepted this rule">✓</span>' : ''}
     </td>
     <td><select data-cat="${r.id}" style="max-width:200px">${categoryOptions(r.category_id)}</select></td>
     <td><input type="checkbox" data-review="${r.id}" ${r.always_review ? 'checked' : ''}
         title="Categorise, but still flag for review"></td>
     <td class="amt">
       <button class="confirm" data-show="${r.id}">matches</button>
+      ${flagged ? `<button class="confirm" data-ok="${r.id}" title="Accept this rule and stop flagging it">looks right</button>` : ''}
       <button class="confirm" data-del="${r.id}">delete</button>
     </td>
   </tr>`;

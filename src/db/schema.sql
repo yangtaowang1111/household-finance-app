@@ -117,6 +117,11 @@ CREATE TABLE IF NOT EXISTS categorization_rules (
   -- Categorise, but still flag it. For merchants where the descriptor is enough
   -- to guess but not enough to be sure.
   always_review INTEGER NOT NULL DEFAULT 0,
+  -- A human has looked at this rule and accepted it. Short patterns are flagged
+  -- on the rules screen because they catch more than they should, but plenty of
+  -- real merchants have short names -- and a warning that cannot be cleared is
+  -- a warning that gets ignored.
+  reviewed INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

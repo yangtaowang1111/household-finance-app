@@ -17,7 +17,7 @@ const router = express.Router();
 router.get('/', (req, res) => {
   const rows = db
     .prepare(
-      `SELECT r.id, r.merchant_pattern, r.category_id, r.always_review, r.created_at,
+      `SELECT r.id, r.merchant_pattern, r.category_id, r.always_review, r.reviewed, r.created_at,
               c.name AS category_name,
               COALESCE(parent.name, c.name) AS category_group
        FROM categorization_rules r
@@ -33,7 +33,7 @@ router.get('/', (req, res) => {
 });
 
 router.patch('/:id', (req, res) => {
-  const { category_id, always_review, merchant_pattern } = req.body || {};
+  const { category_id, always_review, merchant_pattern, reviewed } = req.body || {};
   const rule = db.prepare('SELECT * FROM categorization_rules WHERE id = ?').get(req.params.id);
   if (!rule) return res.status(404).json({ error: 'rule not found' });
 
@@ -50,11 +50,20 @@ router.patch('/:id', (req, res) => {
     sets.push('always_review = @always_review');
     params.always_review = always_review ? 1 : 0;
   }
+  if (reviewed !== undefined) {
+    sets.push('reviewed = @reviewed');
+    params.reviewed = reviewed ? 1 : 0;
+  }
   if (merchant_pattern !== undefined) {
     const pattern = String(merchant_pattern).trim();
     if (pattern.length < 4) return res.status(400).json({ error: 'pattern must be at least 4 characters' });
     sets.push('merchant_pattern = @merchant_pattern');
     params.merchant_pattern = pattern;
+    // A changed pattern is a different rule, so a previous acceptance no longer
+    // applies to it.
+    if (reviewed === undefined && pattern !== rule.merchant_pattern) {
+      sets.push('reviewed = 0');
+    }
   }
   if (!sets.length) return res.status(400).json({ error: 'nothing to update' });
 

@@ -424,6 +424,29 @@ const MIGRATIONS = [
       return ['settings table'];
     },
   },
+  {
+    version: 11,
+    name: 'rules-reviewed',
+    up(db) {
+      if (!tableExists(db, 'categorization_rules')) return [];
+
+      // Marks a rule a human has looked at and accepted.
+      //
+      // The rules screen flags short patterns, because a short pattern catches
+      // more than it should — "CREDIT" was six characters and would have
+      // claimed 47 transactions. But length is only a proxy, and plenty of real
+      // merchants have short names: "WU *", "MOCHA", "SABOR" are all correct.
+      //
+      // Without this, those stay flagged forever. A warning that cannot be
+      // cleared is a warning that gets ignored, which costs more than the
+      // occasional bad rule it was meant to catch.
+      const added = [];
+      if (addColumnIfMissing(db, 'categorization_rules', 'reviewed', 'INTEGER NOT NULL DEFAULT 0')) {
+        added.push('reviewed');
+      }
+      return added;
+    },
+  },
 ];
 
 const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

@@ -10,6 +10,10 @@
 
 let data = null;
 let settings = {};
+let mode = 'set';
+let trackMode = 'month';
+let progress = null;
+let projections = null;
 let context = null; // income, emergency fund balance — things the budget is measured against
 const chosen = new Map(); // category id -> annual amount
 
@@ -167,6 +171,133 @@ function renderGoals() {
     : contributions
       ? `${money(contributions)} contributed · add deferrals below`
       : 'add salary and deferral % below';
+}
+
+/* Budget, actual, pace and year-end in one table.
+ *
+ * Deliberately one view rather than separate "actual" and "forecast" screens:
+ * "am I over, and will I be?" is a single question, and answering half of it on
+ * each of two pages makes the reader do the join.
+ *
+ * Pace, not raw percentage. 70% of an annual budget is unremarkable in August
+ * and alarming in February, and a category that budgets its whole year into one
+ * month is on plan when it lands rather than twelve times over. The API works
+ * the expectation out from the budget's own distribution; this only colours it. */
+function renderTrack() {
+  if (!progress) return;
+
+  const threshold = Number($('threshold').value) / 100;
+  const forecastByCategory = new Map(
+    (projections ? projections.categories : []).map((c) => [c.category_id, c])
+  );
+
+  const all = progress.groups.flatMap((g) => g.categories);
+  const overBudget = all.filter((c) => c.over).length;
+  const offPace = all.filter((c) => !c.over && c.pace !== null && c.pace > threshold).length;
+
+  const stat = (label, value, sub, tone) =>
+    `<div><div class="eyebrow">${label}</div><div class="v num ${tone || ''}">${value}</div>` +
+    `<div class="sub">${sub || ''}</div></div>`;
+
+  $('track-totals').innerHTML = [
+    stat('Budgeted', money(progress.budgeted), trackMode === 'month' ? 'this month' : `${progress.months_covered} months`),
+    stat('Actual', money(progress.actual), progress.used_percent === null ? '' : `${progress.used_percent}% used`),
+    stat('Remaining', money(progress.remaining), '', progress.remaining < 0 ? 'bad' : 'good'),
+    stat('Over budget', overBudget, 'categories', overBudget ? 'bad' : 'good'),
+    stat('Off pace', offPace, `above ${Math.round(threshold * 100)}% of plan`, offPace ? 'bad' : 'good'),
+    projections
+      ? stat(
+          'Forecast year end',
+          money(projections.forecast_year_end),
+          `${money(projections.variance, { showPlus: true })} vs budget`,
+          projections.variance < 0 ? 'bad' : 'good'
+        )
+      : '',
+    progress.unbudgeted_spending
+      ? stat('Unbudgeted', money(progress.unbudgeted_spending), 'spent with no budget set', 'bad')
+      : '',
+  ].join('');
+
+  if (!progress.groups.length) {
+    $('track-rows').innerHTML = '<div class="skeleton">Nothing budgeted or spent in this period.</div>';
+    return;
+  }
+
+  const row = (c, forecast) => {
+    const state = c.over ? 'over' : c.pace !== null && c.pace > threshold ? 'warn' : '';
+    const paceClass = c.pace === null ? '' : c.pace > threshold ? 'hot' : c.pace < 0.9 ? 'cool' : '';
+    const tag = c.unbudgeted ? '<span class="tag unbudgeted">no budget</span>' : '';
+    return [
+      '<tr class="' + state + '">',
+      '<td class="child">' + escapeHtml(c.name) + tag + '</td>',
+      '<td class="amt num">' + (c.budgeted === null ? '&mdash;' : money(c.budgeted)) + '</td>',
+      '<td class="amt num">' + money(c.actual) + '</td>',
+      '<td class="amt pace ' + paceClass + '">' + (c.pace === null ? '&mdash;' : c.pace.toFixed(2)) + '</td>',
+      '<td class="amt num">' + (forecast ? money(forecast.forecast_year_end) : '&mdash;') + '</td>',
+      '<td class="amt num ' + (forecast && forecast.over_budget ? 'bad' : '') + '">' +
+        (forecast && forecast.variance !== null ? money(forecast.variance, { showPlus: true }) : '&mdash;') +
+        '</td>',
+      '</tr>',
+    ].join('');
+  };
+
+  const groupRow = (g) => {
+    const conflict = g.cap_exceeded_by
+      ? '<span class="tag unbudgeted">children exceed cap by ' + money(g.cap_exceeded_by) + '</span>'
+      : '';
+    return [
+      '<tr class="grouprow">',
+      '<td>' + escapeHtml(g.name) + conflict + '</td>',
+      '<td class="amt num">' + money(g.budgeted) + '</td>',
+      '<td class="amt num">' + money(g.actual) + '</td>',
+      '<td class="amt num">' + (g.used_percent === null ? '&mdash;' : g.used_percent + '%') + '</td>',
+      '<td colspan="2"></td>',
+      '</tr>',
+    ].join('');
+  };
+
+  const head =
+    '<thead><tr><th>Category</th>' +
+    '<th style="text-align:right">Budget</th>' +
+    '<th style="text-align:right">Actual</th>' +
+    '<th style="text-align:right">Pace</th>' +
+    '<th style="text-align:right">Year end</th>' +
+    '<th style="text-align:right">vs budget</th></tr></thead>';
+
+  const body = progress.groups
+    .map((g) => groupRow(g) + g.categories.map((c) => row(c, forecastByCategory.get(c.category_id))).join(''))
+    .join('');
+
+  $('track-rows').innerHTML = '<table>' + head + '<tbody>' + body + '</tbody></table>';
+}
+
+async function loadTrack() {
+  const year = Number($('year').value);
+  const month = trackMode === 'month' ? Number($('track-month').value) : null;
+  try {
+    const [p, f] = await Promise.all([
+      api('/budgets/progress?year=' + year + (month ? '&month=' + month : '')),
+      // Year-end only ever means the whole year, so it is fetched once and shown
+      // beside either period.
+      api('/budgets/forecast?year=' + year).catch(() => null),
+    ]);
+    progress = p;
+    projections = f;
+    renderTrack();
+  } catch (err) {
+    if (err.unauthorized) return showGate(true);
+    showError(err.message);
+  }
+}
+
+function setMode(next) {
+  mode = next;
+  $('mode-set').classList.toggle('on', next === 'set');
+  $('mode-track').classList.toggle('on', next === 'track');
+  document.querySelectorAll('.setonly').forEach((el) => { el.hidden = next !== 'set'; });
+  $('track').hidden = next !== 'track';
+  $('heading').textContent = next === 'set' ? 'Budget for ' + data.year : 'Tracking ' + data.year;
+  if (next === 'track') loadTrack();
 }
 
 function renderTotals() {
@@ -343,6 +474,38 @@ startPage(() => {
   $('hide-empty').addEventListener('change', render);
   $('save').addEventListener('click', save);
   $('save-settings').addEventListener('click', saveSettings);
+
+  $('mode-set').addEventListener('click', () => setMode('set'));
+  $('mode-track').addEventListener('click', () => setMode('track'));
+
+  $('per-month').addEventListener('click', () => {
+    trackMode = 'month';
+    $('per-month').classList.add('on');
+    $('per-ytd').classList.remove('on');
+    $('track-month').hidden = false;
+    loadTrack();
+  });
+  $('per-ytd').addEventListener('click', () => {
+    trackMode = 'ytd';
+    $('per-ytd').classList.add('on');
+    $('per-month').classList.remove('on');
+    $('track-month').hidden = true;
+    loadTrack();
+  });
+  $('track-month').addEventListener('change', loadTrack);
+
+  // Recolours from data already loaded — no request, so it stays responsive
+  // while the slider is being dragged.
+  $('threshold').addEventListener('input', () => {
+    $('threshold-label').textContent = $('threshold').value + '%';
+    renderTrack();
+  });
+
+  $('track-month').innerHTML = Array.from({ length: 12 }, (_, i) => {
+    const name = new Date(2000, i, 1).toLocaleDateString('en-US', { month: 'long' });
+    return '<option value="' + (i + 1) + '">' + name + '</option>';
+  }).join('');
+  $('track-month').value = new Date().getMonth() + 1;
   // Live, so the goals move while the assumptions are being typed.
   for (const id of Object.values(SETTING_FIELDS)) {
     $(id).addEventListener('input', () => {

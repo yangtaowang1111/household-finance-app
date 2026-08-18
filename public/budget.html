@@ -46,10 +46,14 @@
         <div class="eyebrow">Budget</div>
         <h1 id="heading">Set your budget</h1>
       </div>
-      <div style="display:flex;gap:8px;align-items:center">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <div class="modes">
+          <button id="mode-set" class="mode on">Set</button>
+          <button id="mode-track" class="mode">Track</button>
+        </div>
         <select id="year"></select>
-        <button id="accept-all" class="ghost">Use all suggestions</button>
-        <button id="save">Save budget</button>
+        <button id="accept-all" class="ghost setonly">Use all suggestions</button>
+        <button id="save" class="setonly">Save budget</button>
       </div>
     </div>
 
@@ -133,13 +137,41 @@
       </p>
     </section>
 
-    <section class="card">
+    <section class="card setonly">
       <div class="card-head">
         <span class="eyebrow">Categories</span>
         <label class="check"><input type="checkbox" id="hide-empty" checked> Hide categories with no history</label>
       </div>
       <div id="rows"><div class="skeleton">Loading…</div></div>
     </section>
+
+    <div id="track" hidden>
+      <section class="card" style="margin-bottom:14px">
+        <div class="goals-grid" id="track-totals"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head" style="flex-wrap:wrap;gap:10px">
+          <div class="modes">
+            <button id="per-month" class="mode on">This month</button>
+            <button id="per-ytd" class="mode">Year to date</button>
+          </div>
+          <select id="track-month"></select>
+          <label class="check" style="margin-left:auto">
+            Flag above
+            <input type="range" id="threshold" min="100" max="150" step="5" value="110" style="width:110px">
+            <span class="num" id="threshold-label">110%</span>
+            of plan
+          </label>
+        </div>
+        <div class="table-wrap" id="track-rows"><div class="skeleton">Loading…</div></div>
+        <p class="note">
+          Pace compares spending against what the plan expected by now, not
+          against a straight line — a category that budgets its whole year into
+          one month is on plan when it lands, not twelve times over.
+        </p>
+      </section>
+    </div>
   </main>
 </div>
 

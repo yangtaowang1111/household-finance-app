@@ -568,3 +568,47 @@ td.pick input { accent-color: var(--accent); }
   gap: 10px 16px;
   margin-top: 10px;
 }
+
+/* --- mode toggle ----------------------------------------------------------- */
+
+.modes { display: inline-flex; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
+.modes .mode {
+  background: transparent;
+  color: var(--muted);
+  border: 0;
+  border-radius: 0;
+  padding: 6px 14px;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.modes .mode.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.modes .mode:hover { filter: none; background: var(--line-soft); }
+.modes .mode.on:hover { background: var(--accent-soft); }
+
+/* --- track table ----------------------------------------------------------- */
+
+/* Three states rather than one threshold. "Already over" and "heading there"
+   need different reactions, and money in a category nothing was budgeted for is
+   a third thing again — not overspending, but unplanned. */
+tr.over td { background: color-mix(in oklab, var(--attn) 12%, transparent); }
+tr.warn td { background: var(--attn-soft); }
+
+td.pace { font-variant-numeric: tabular-nums; }
+td.pace.hot { color: var(--attn); font-weight: 600; }
+td.pace.cool { color: var(--pos); }
+
+.tag {
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 0 4px;
+  color: var(--muted);
+  margin-left: 6px;
+}
+.tag.unbudgeted { border-color: var(--attn); color: var(--attn); }
+
+tr.grouprow td { font-weight: 600; border-top: 1px solid var(--line); background: var(--line-soft); }
+tr.grouprow td:first-child { padding-left: 0; }
+td.child:first-child { padding-left: 16px; }

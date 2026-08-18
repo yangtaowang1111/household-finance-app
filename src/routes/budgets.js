@@ -2,8 +2,23 @@ const express = require('express');
 const db = require('../db');
 const { budgetVsActual } = require('../services/budgetCalc');
 const { baseline, writePlan } = require('../services/budgetBaseline');
+const { budgetProgress } = require('../services/budgetProgress');
 
 const router = express.Router();
+
+// Budget against actual. ?month=N compares one month; omitting it compares the
+// year so far against the budget for the months that have actually happened.
+router.get('/progress', (req, res) => {
+  const year = Number(req.query.year) || new Date().getFullYear();
+  const month = req.query.month ? Number(req.query.month) : undefined;
+  if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+    return res.status(400).json({ error: 'year must be a four-digit year' });
+  }
+  if (month !== undefined && (!Number.isInteger(month) || month < 1 || month > 12)) {
+    return res.status(400).json({ error: 'month must be 1-12' });
+  }
+  res.json(budgetProgress({ year, month }));
+});
 
 // What each category actually cost, last year and this, with a suggested annual
 // figure. This is the data behind setting a budget for the first time — nobody

@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Budget — Ledger</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='4' fill='%234a9ba5'/></svg>">
+</head>
+<body>
+
+<div id="gate" class="gate" hidden>
+  <div class="card">
+    <div class="eyebrow">Ledger</div>
+    <h1 style="margin:6px 0 2px;font-size:17px">Enter API key</h1>
+    <p style="color:var(--muted);font-size:12px;margin:0">Stored in this browser only. It's the <code>API_KEY</code> from your <code>.env</code>.</p>
+    <input id="gate-key" type="password" autocomplete="off" spellcheck="false" placeholder="API key">
+    <button id="gate-go">Unlock</button>
+    <p id="gate-err" class="delta down" style="font-size:12px" hidden>That key was rejected.</p>
+  </div>
+</div>
+
+<div class="shell" id="app" hidden>
+  <nav class="sidebar">
+    <div class="brand">
+      <span class="brand-mark"></span>
+      <span>Ledger</span>
+      <span class="badge">self-hosted</span>
+    </div>
+    <a class="nav-item" href="index.html">Overview</a>
+    <a class="nav-item" href="transactions.html">Transactions</a>
+    <a class="nav-item" href="budget.html" aria-current="page">Budget</a>
+    <a class="nav-item" href="#">Spending</a>
+    <a class="nav-item" href="#">Accounts</a>
+    <a class="nav-item" href="#">Investments</a>
+    <a class="nav-item" href="#">Property</a>
+    <a class="nav-item" href="#">Rules &amp; imports</a>
+    <div class="sidebar-foot" id="foot"></div>
+  </nav>
+
+  <main class="main">
+    <div id="errors"></div>
+
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">Budget</div>
+        <h1 id="heading">Set your budget</h1>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select id="year"></select>
+        <button id="accept-all" class="ghost">Use all suggestions</button>
+        <button id="save">Save budget</button>
+      </div>
+    </div>
+
+    <section class="card" style="margin-bottom:14px">
+      <div class="totals">
+        <div>
+          <div class="eyebrow" id="ref-label">Last year</div>
+          <div class="v num" id="t-reference">—</div>
+        </div>
+        <div>
+          <div class="eyebrow">Run rate this year</div>
+          <div class="v num" id="t-runrate">—</div>
+        </div>
+        <div>
+          <div class="eyebrow">Budget as set</div>
+          <div class="v num" id="t-budget">—</div>
+          <div class="sub" id="t-delta"></div>
+        </div>
+      </div>
+      <p class="note">
+        Figures come from what you actually spent. Nothing is written until you
+        press Save — drag freely.
+      </p>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <span class="eyebrow">Categories</span>
+        <label class="check"><input type="checkbox" id="hide-empty" checked> Hide categories with no history</label>
+      </div>
+      <div id="rows"><div class="skeleton">Loading…</div></div>
+    </section>
+  </main>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="common.js"></script>
+<script src="budget.js"></script>
+</body>
+</html>

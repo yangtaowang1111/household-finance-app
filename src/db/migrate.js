@@ -382,6 +382,27 @@ const MIGRATIONS = [
       return added;
     },
   },
+  {
+    version: 9,
+    name: 'categories-forecast-method',
+    up(db) {
+      if (!tableExists(db, 'categories')) return [];
+
+      // How this category's remaining year should be projected. NULL means
+      // "work it out from the shape", which is right for nearly all of them —
+      // the column exists for the handful where a person knows something the
+      // history does not show.
+      //
+      // Childcare is the example that motivates it: statistically it is a
+      // rock-steady recurring cost, and it will fall off a cliff the month
+      // school starts. No amount of variance analysis sees that coming.
+      const added = [];
+      if (addColumnIfMissing(db, 'categories', 'forecast_method', 'TEXT')) {
+        added.push('forecast_method');
+      }
+      return added;
+    },
+  },
 ];
 
 const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

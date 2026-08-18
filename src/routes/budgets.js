@@ -3,8 +3,32 @@ const db = require('../db');
 const { budgetVsActual } = require('../services/budgetCalc');
 const { baseline, writePlan } = require('../services/budgetBaseline');
 const { budgetProgress } = require('../services/budgetProgress');
+const { forecast, METHODS } = require('../services/forecast');
 
 const router = express.Router();
+
+// Where the year lands if nothing changes, per category and in total.
+router.get('/forecast', (req, res) => {
+  const year = Number(req.query.year) || new Date().getFullYear();
+  if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+    return res.status(400).json({ error: 'year must be a four-digit year' });
+  }
+  res.json(forecast({ year }));
+});
+
+// Overrides how one category is projected. null restores automatic
+// classification, which is right for nearly all of them.
+router.patch('/forecast/:categoryId', (req, res) => {
+  const { method } = req.body || {};
+  if (method !== null && !METHODS.includes(method)) {
+    return res.status(400).json({ error: `method must be null or one of: ${METHODS.join(', ')}` });
+  }
+  const result = db
+    .prepare('UPDATE categories SET forecast_method = ? WHERE id = ?')
+    .run(method, req.params.categoryId);
+  if (result.changes === 0) return res.status(404).json({ error: 'category not found' });
+  res.json(db.prepare('SELECT id, name, forecast_method FROM categories WHERE id = ?').get(req.params.categoryId));
+});
 
 // Budget against actual. ?month=N compares one month; omitting it compares the
 // year so far against the budget for the months that have actually happened.

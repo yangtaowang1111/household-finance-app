@@ -45,7 +45,10 @@ CREATE TABLE IF NOT EXISTS categories (
   -- 0 for money that moves without being spent: credit card payments, internal
   -- transfers, the bank fee/waiver pairs. These stay real transactions but must
   -- never reach budget-vs-actual, or every total double-counts.
-  counts_as_spending INTEGER NOT NULL DEFAULT 1
+  counts_as_spending INTEGER NOT NULL DEFAULT 1,
+  -- Overrides how the remaining year is projected. NULL means classify from the
+  -- category's own shape, which is right for nearly all of them.
+  forecast_method TEXT
 );
 
 CREATE TABLE IF NOT EXISTS transactions (

@@ -665,3 +665,6 @@ svg.mini { width: 68px; height: 28px; display: block; }
   font: inherit;
   font-size: 12.5px;
 }
+
+/* Not settled yet: the amount can still change, and it counts meanwhile. */
+.tag.pending { border-color: var(--accent); color: var(--accent); }

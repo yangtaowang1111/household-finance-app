@@ -12,7 +12,7 @@ const selected = new Set();
 /* Kept in the query string rather than in memory so the Overview can link
    straight to a filtered view, the back button works, and a filtered list can
    be bookmarked or sent to someone. */
-const FILTERS = ['search', 'group', 'account_id', 'year', 'month', 'min_amount', 'max_amount', 'needs_review', 'uncategorized', 'possible_duplicates'];
+const FILTERS = ['search', 'group', 'account_id', 'year', 'month', 'min_amount', 'max_amount', 'pending', 'needs_review', 'uncategorized', 'possible_duplicates'];
 
 function readFilters() {
   const params = new URLSearchParams(location.search);
@@ -38,6 +38,7 @@ function currentFilters() {
   if ($('f-review').checked) f.needs_review = '1';
   if ($('f-uncat').checked) f.uncategorized = '1';
   if ($('f-dupes').checked) f.possible_duplicates = '1';
+  if ($('f-pending').checked) f.pending = '1';
   return f;
 }
 
@@ -52,6 +53,7 @@ function applyFiltersToControls(f) {
   $('f-review').checked = Boolean(f.needs_review);
   $('f-uncat').checked = Boolean(f.uncategorized);
   $('f-dupes').checked = Boolean(f.possible_duplicates);
+  $('f-pending').checked = Boolean(f.pending);
 }
 
 function describe(f) {
@@ -59,6 +61,7 @@ function describe(f) {
   if (f.needs_review) return 'Needs review';
   if (f.uncategorized) return 'Uncategorised';
   if (f.possible_duplicates) return 'Possible duplicates';
+  if (f.pending) return 'Not yet settled';
   const monthName = (m) => new Date(2000, Number(m) - 1, 1).toLocaleDateString('en-US', { month: 'long' });
   if (f.year && f.month) return `${monthName(f.month)} ${f.year}`;
   if (f.year) return `${f.year}`;
@@ -151,6 +154,7 @@ function renderRow(t) {
     <td class="mono">${shortDate(t.date)}, ${t.date.slice(0, 4)}</td>
     <td class="desc">
       ${escapeHtml((t.payee || t.merchant_raw || '').slice(0, 64))}
+      ${t.pending ? '<span class="tag pending" title="Not settled yet — the amount can still change, and it counts toward your totals meanwhile">pending</span>' : ''}
       ${note ? `<div class="sub">${escapeHtml(note)}</div>` : ''}
       ${t.possible_duplicate_of ? '<div class="sub" style="color:var(--attn)">Possible duplicate of #' + t.possible_duplicate_of + '</div>' : ''}
     </td>
@@ -384,7 +388,7 @@ function wire() {
     clearTimeout(debounce);
     debounce = setTimeout(load, 250);
   });
-  ['f-group', 'f-account', 'f-year', 'f-month', 'f-min', 'f-max', 'f-review', 'f-uncat', 'f-dupes'].forEach((id) =>
+  ['f-group', 'f-account', 'f-year', 'f-month', 'f-min', 'f-max', 'f-review', 'f-uncat', 'f-dupes', 'f-pending'].forEach((id) =>
     $(id).addEventListener('change', load)
   );
 

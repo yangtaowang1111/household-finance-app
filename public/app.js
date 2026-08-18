@@ -340,6 +340,20 @@ async function load() {
       });
     }
 
+    // Pending rows count toward every total above while their amounts can still
+    // change. Saying so is the difference between a figure that moves and a
+    // figure that moves unexpectedly.
+    const pending = await api('/transactions?pending=1&limit=2000').catch(() => []);
+    if (pending.length) {
+      const total = pending.reduce((s, t) => s + Math.abs(t.amount), 0);
+      attention.push({
+        title: `${pending.length} transactions not yet settled`,
+        detail: `${money(total)} included in the figures above. Amounts can still change until they post.`,
+        warn: false,
+        href: txnLink({ pending: '1' }),
+      });
+    }
+
     const dupes = await api('/transactions?possible_duplicates=1&limit=2000').catch(() => []);
     if (dupes.length) {
       attention.push({

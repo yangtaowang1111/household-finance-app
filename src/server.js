@@ -17,6 +17,7 @@ const cashflowRouter = require('./routes/cashflow');
 const networthRouter = require('./routes/networth');
 const settingsRouter = require('./routes/settings');
 const investmentsRouter = require('./routes/investments');
+const propertiesRouter = require('./routes/properties');
 
 seedTaxonomy({ log: true });
 
@@ -43,6 +44,7 @@ app.use('/api/cashflow', cashflowRouter);
 app.use('/api/networth', networthRouter);
 app.use('/api/settings', settingsRouter);
 app.use('/api/investments', investmentsRouter);
+app.use('/api/properties', propertiesRouter);
 
 const PORT = process.env.PORT || 3000;
 

@@ -615,3 +615,8 @@ td.child:first-child { padding-left: 16px; }
 
 /* A balance line small enough to sit inside a row. */
 svg.mini { width: 68px; height: 28px; display: block; }
+
+/* Monthly mortgage payments. Escrow is re-analysed annually, so a step here is
+   a property tax or insurance change — the only visible trace of either. */
+.pbars { display: flex; align-items: flex-end; gap: 3px; height: 44px; margin-bottom: 6px; }
+.pbar { flex: 1; min-width: 4px; border-radius: 2px 2px 0 0; display: block; }

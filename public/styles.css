@@ -620,3 +620,25 @@ svg.mini { width: 68px; height: 28px; display: block; }
    a property tax or insurance change — the only visible trace of either. */
 .pbars { display: flex; align-items: flex-end; gap: 3px; height: 44px; margin-bottom: 6px; }
 .pbar { flex: 1; min-width: 4px; border-radius: 2px 2px 0 0; display: block; }
+
+/* --- report body ----------------------------------------------------------- */
+
+/* Prose, unlike everything else on the site, so it reads rather than scans. */
+.report h3, .report h4, .report h5 {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 18px 0 6px;
+  letter-spacing: 0.01em;
+}
+.report h3:first-of-type { margin-top: 4px; }
+.report p { margin: 0 0 10px; max-width: 68ch; line-height: 1.55; }
+.report ul { margin: 0 0 10px; padding-left: 20px; max-width: 68ch; }
+.report li { margin-bottom: 5px; line-height: 1.5; }
+.report strong { font-weight: 600; }
+.report code {
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--line-soft);
+  padding: 1px 4px;
+  border-radius: 3px;
+}

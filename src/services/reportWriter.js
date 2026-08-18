@@ -35,7 +35,7 @@ Cover, in this order, and only where there is something worth saying:
 
 Rules:
 - **household_context, where present, is fact.** It holds what the ledger cannot: a job ending, a cost about to stop, a payment already expected. Prefer it over anything you would infer from the numbers, and say when it changes the reading of a figure.
-- household_context has two parts. \`always_true\` holds durable facts that apply to every period. \`by_month\` holds notes pinned to specific months of this year, up to and including the one under review — the ones from earlier months are there for continuity, so use them to explain how the period came about rather than reporting them as news.
+- household_context has two parts. \`always_true\` holds durable facts that apply to every period. \`by_month\` holds notes pinned to specific months of this year, up to and including the one under review — the ones from earlier months are there for continuity, so use them to explain how the period came about rather than reporting them as news. \`what_is_coming\` is the note for the month AFTER this one, which has not happened yet: use it to say what this period's position means for what follows, and never report it as something that occurred.
 - Never invent a figure. If something is not in the summary, say it is not known rather than estimating it.
 - Investment gains are never income. A balance change is not a cash flow.
 - Do not moralise about spending. Golf and dining out are choices, not failures.

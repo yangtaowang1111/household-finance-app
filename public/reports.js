@@ -45,21 +45,48 @@ function markdown(src) {
   return out.join('');
 }
 
+/* Every period is listed, finished or not.
+ *
+ * Reviewing an unfinished period is misleading — its comparisons are against a
+ * partial figure — but WRITING A NOTE about one is not, and noting next month
+ * in advance is much of the point: "new salary starts, and a one-time bonus
+ * arrives" is worth recording before it happens, not after. So the list is
+ * complete and only the review is gated. */
 function periodOptions() {
   const year = Number($('year').value);
-  const now = new Date();
-  if (kind === 'quarter') {
-    return [1, 2, 3, 4]
-      .map((q) => `<option value="${q}">Q${q}</option>`)
-      .join('');
-  }
-  // Only months that have actually finished — reviewing a month still running
-  // reports a period that is not over.
-  const last = year === now.getFullYear() ? now.getMonth() : 12;
-  return Array.from({ length: last }, (_, i) => i + 1)
-    .reverse()
-    .map((m) => `<option value="${m}">${new Date(2000, m - 1, 1).toLocaleDateString('en-US', { month: 'long' })}</option>`)
+  const values = kind === 'quarter' ? [4, 3, 2, 1] : Array.from({ length: 12 }, (_, i) => 12 - i);
+
+  return values
+    .map((v) => {
+      const label =
+        kind === 'quarter'
+          ? `Q${v}`
+          : new Date(2000, v - 1, 1).toLocaleDateString('en-US', { month: 'long' });
+      return `<option value="${v}">${label}${isComplete(year, v) ? '' : ' — not finished'}</option>`;
+    })
     .join('');
+}
+
+/** Whether a period has actually ended. */
+function isComplete(year, value) {
+  const now = new Date();
+  const lastMonth = kind === 'quarter' ? value * 3 : value;
+  if (year < now.getFullYear()) return true;
+  if (year > now.getFullYear()) return false;
+  return lastMonth < now.getMonth() + 1;
+}
+
+/** Gates the review on the period being over; the note editor never is. */
+function updateGate() {
+  const year = Number($('year').value);
+  const complete = isComplete(year, Number($('period').value));
+
+  $('generate').disabled = !complete;
+  $('preview').disabled = !complete;
+  $('gate-note').hidden = complete;
+  $('gate-note').textContent = complete
+    ? ''
+    : 'This period has not finished, so there is nothing to review yet — every comparison would be against a partial figure. You can still write its note now.';
 }
 
 function periodParams() {
@@ -278,6 +305,7 @@ async function load() {
     notes = yearNotes;
     history = reportList;
     renderNoteEditor();
+    updateGate();
     renderHistory();
     $('foot').textContent = `${history.length} reviews`;
   } catch (err) {
@@ -298,6 +326,7 @@ startPage(() => {
     $('period').innerHTML = periodOptions();
     $('preview-out').innerHTML = '';
     renderNoteEditor();
+    updateGate();
   };
   $('kind-month').addEventListener('click', () => setKind('month'));
   $('kind-quarter').addEventListener('click', () => setKind('quarter'));
@@ -305,6 +334,7 @@ startPage(() => {
     $('period').innerHTML = periodOptions();
     notes = await api(`/notes?year=${$('year').value}`).catch(() => []);
     renderNoteEditor();
+    updateGate();
   });
   $('preview').addEventListener('click', preview);
   $('generate').addEventListener('click', () => generate(false));
@@ -312,7 +342,7 @@ startPage(() => {
   $('save-note').addEventListener('click', saveNote);
   // The note editor follows whichever period is selected, so writing a note and
   // reviewing that period are the same gesture.
-  $('period').addEventListener('change', renderNoteEditor);
+  $('period').addEventListener('change', () => { renderNoteEditor(); updateGate(); });
 
   load();
 });

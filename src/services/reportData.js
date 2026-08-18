@@ -180,10 +180,18 @@ function context(year, throughMonth) {
     .prepare('SELECT period, note FROM period_notes WHERE period >= ? AND period <= ? ORDER BY period')
     .all(`${year}-01`, `${year}-${String(throughMonth).padStart(2, '0')}`);
 
-  if (!standing?.value && !notes.length) return null;
+  // The month immediately after the period, if it has a note. A drawdown reads
+  // very differently when the next month has no paycheck either, and that is
+  // knowable in advance — but it has not happened, so it is labelled rather than
+  // mixed in with what did.
+  const nextMonth = throughMonth === 12 ? `${year + 1}-01` : `${year}-${String(throughMonth + 1).padStart(2, '0')}`;
+  const upcoming = db.prepare('SELECT period, note FROM period_notes WHERE period = ?').get(nextMonth);
+
+  if (!standing?.value && !notes.length && !upcoming) return null;
   return {
     always_true: standing && standing.value ? standing.value : null,
     by_month: notes.map((n) => ({ month: n.period, note: n.note })),
+    what_is_coming: upcoming ? { month: upcoming.period, note: upcoming.note } : null,
   };
 }
 

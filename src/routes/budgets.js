@@ -1,8 +1,41 @@
 const express = require('express');
 const db = require('../db');
 const { budgetVsActual } = require('../services/budgetCalc');
+const { baseline, writePlan } = require('../services/budgetBaseline');
 
 const router = express.Router();
+
+// What each category actually cost, last year and this, with a suggested annual
+// figure. This is the data behind setting a budget for the first time — nobody
+// knows what they spend on 59 categories, but they can react to a number.
+router.get('/baseline', (req, res) => {
+  const year = Number(req.query.year) || new Date().getFullYear();
+  const reference = req.query.reference ? Number(req.query.reference) : undefined;
+  if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+    return res.status(400).json({ error: 'year must be a four-digit year' });
+  }
+  res.json(baseline({ year, reference }));
+});
+
+// Writes a whole year at once, spreading each annual figure over the months
+// using that category's own shape.
+router.post('/plan', (req, res) => {
+  const { year, plans } = req.body || {};
+  if (!Number.isInteger(year)) return res.status(400).json({ error: 'year (integer) is required' });
+  if (!Array.isArray(plans) || !plans.length) return res.status(400).json({ error: 'plans (array) is required' });
+  if (plans.length > 500) return res.status(400).json({ error: 'at most 500 categories at a time' });
+
+  for (const plan of plans) {
+    if (!plan || !Number.isInteger(plan.category_id)) {
+      return res.status(400).json({ error: 'each plan needs an integer category_id' });
+    }
+    if (plan.annual_amount != null && !Number.isFinite(Number(plan.annual_amount))) {
+      return res.status(400).json({ error: `annual_amount for category ${plan.category_id} is not a number` });
+    }
+  }
+
+  res.json(writePlan(year, plans.map((p) => ({ ...p, annual_amount: Number(p.annual_amount) || 0 }))));
+});
 
 router.get('/', (req, res) => {
   const { month } = req.query;

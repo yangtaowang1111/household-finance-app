@@ -19,6 +19,7 @@ const settingsRouter = require('./routes/settings');
 const investmentsRouter = require('./routes/investments');
 const propertiesRouter = require('./routes/properties');
 const rulesRouter = require('./routes/rules');
+const reportsRouter = require('./routes/reports');
 
 seedTaxonomy({ log: true });
 
@@ -47,6 +48,7 @@ app.use('/api/settings', settingsRouter);
 app.use('/api/investments', investmentsRouter);
 app.use('/api/properties', propertiesRouter);
 app.use('/api/rules', rulesRouter);
+app.use('/api/reports', reportsRouter);
 
 const PORT = process.env.PORT || 3000;
 

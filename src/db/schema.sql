@@ -175,3 +175,22 @@ CREATE TABLE IF NOT EXISTS settings (
   value TEXT,
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Generated period reviews. Kept rather than regenerated: a review is a record
+-- of what was true and what was said at the time, and regenerating March's in
+-- July would answer against different data. `data` stores the exact summary the
+-- model saw, so any claim in the text can be checked against its own figures.
+CREATE TABLE IF NOT EXISTS reports (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  period_label TEXT NOT NULL,
+  period_from TEXT NOT NULL,
+  period_to TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('month', 'quarter')),
+  body TEXT NOT NULL,
+  data TEXT NOT NULL,
+  model TEXT,
+  input_tokens INTEGER,
+  output_tokens INTEGER,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(period_from, kind)
+);

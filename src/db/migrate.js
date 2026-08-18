@@ -447,6 +447,39 @@ const MIGRATIONS = [
       return added;
     },
   },
+  {
+    version: 12,
+    name: 'reports',
+    up(db) {
+      // Generated reviews, kept rather than regenerated on demand.
+      //
+      // Two reasons. A review is a snapshot of what was true and what was said
+      // at the time — regenerating March's report in July would produce a
+      // different answer against changed data, which makes it useless for
+      // asking "was that right?". And each one costs an API call, so re-reading
+      // should be free.
+      //
+      // `data` stores the exact summary the model saw, so a claim in the text
+      // can always be checked against the figures behind it.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS reports (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          period_label TEXT NOT NULL,
+          period_from TEXT NOT NULL,
+          period_to TEXT NOT NULL,
+          kind TEXT NOT NULL CHECK (kind IN ('month', 'quarter')),
+          body TEXT NOT NULL,
+          data TEXT NOT NULL,
+          model TEXT,
+          input_tokens INTEGER,
+          output_tokens INTEGER,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE(period_from, kind)
+        )
+      `);
+      return ['reports table'];
+    },
+  },
 ];
 
 const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

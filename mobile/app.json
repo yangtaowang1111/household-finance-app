@@ -1,0 +1,17 @@
+{
+  "expo": {
+    "name": "Ledger",
+    "slug": "ledger",
+    "version": "0.1.0",
+    "orientation": "default",
+    "scheme": "ledger",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.household.ledger"
+    },
+    "plugins": ["expo-router"],
+    "experiments": { "typedRoutes": false }
+  }
+}

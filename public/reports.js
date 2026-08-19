@@ -91,10 +91,10 @@ function updateGate() {
   const state = periodState(year, Number($('period').value));
   const ahead = state === 'ahead';
 
-  $('generate').disabled = ahead;
-  $('preview').disabled = ahead;
+  // Hidden rather than disabled: a dead button is a question the reader has to
+  // work out the answer to.
+  $('generate').hidden = ahead;
   $('plan').hidden = !ahead;
-  $('plan-preview').hidden = !ahead;
 
   $('gate-note').hidden = state === 'past';
   $('gate-note').style.color = ahead ? 'var(--muted)' : 'var(--accent)';
@@ -210,37 +210,38 @@ function renderHistory() {
 
 /* --- actions -------------------------------------------------------------- */
 
+/* One button, two questions. A period that has happened (or is happening) shows
+   what it cost; one still ahead shows what it usually costs. Which of those the
+   reader wants is fully determined by the period they picked, so asking them to
+   choose between two buttons would be asking a question with only one answer. */
 async function preview() {
+  const ahead = periodState(Number($('year').value), Number($('period').value)) === 'ahead';
   $('preview-out').innerHTML = '<div class="skeleton">Gathering…</div>';
   try {
+    if (ahead) return renderPlanFigures(await api(`/reports/plan/preview?${query(periodParams())}`));
     renderFigures(await api(`/reports/preview?${query(periodParams())}`));
   } catch (err) {
     $('preview-out').innerHTML = `<div class="error">${escapeHtml(err.message)}</div>`;
   }
 }
 
-async function planPreview() {
-  $('preview-out').innerHTML = '<div class="skeleton">Gathering…</div>';
-  try {
-    const d = await api(`/reports/plan/preview?${query(periodParams())}`);
-    $('preview-out').innerHTML = `
-      <div style="margin-top:14px">
-        <div class="eyebrow" style="margin-bottom:8px">${escapeHtml(d.planning_for.label)} · what the plan is given</div>
-        <div class="row"><span class="label">Budgeted for the month</span><span class="v num">${money(d.budget_for_the_month.budgeted)}</span></div>
-        <div class="row"><span class="label">Same month last year</span><span class="v num">${money(d.same_month_last_year.spending)}</span></div>
-        <div class="row"><span class="label">Recent monthly average</span><span class="v num">${money(d.recent_three_months.monthly_average_spending)}</span></div>
-        ${d.heavier_in_this_month.length ? `<div class="eyebrow" style="margin:16px 0 6px">Heavier in this month than usual</div>` +
-          d.heavier_in_this_month.map((w) => `<div class="row" style="padding:6px 0">
-            <div><span class="label">${escapeHtml(w.group)}</span><div class="sub">usually ${money(w.recent_monthly_average)}/mo</div></div>
-            <span class="v num">${money(w.this_month_last_year)}</span></div>`).join('') : ''}
-        ${d.currently_off_pace.length ? `<div class="eyebrow" style="margin:16px 0 6px">Running hot right now</div>` +
-          d.currently_off_pace.map((c) => `<div class="row" style="padding:6px 0">
-            <span class="label">${escapeHtml(c.category)}</span>
-            <span><span class="v num">${money(c.actual)}</span> <span class="pct">${c.pace}x plan</span></span></div>`).join('') : ''}
-      </div>`;
-  } catch (err) {
-    $('preview-out').innerHTML = `<div class="error">${escapeHtml(err.message)}</div>`;
-  }
+/** What a plan is built from: what the month usually costs, and what is hot now. */
+function renderPlanFigures(d) {
+  $('preview-out').innerHTML = `
+    <div style="margin-top:14px">
+      <div class="eyebrow" style="margin-bottom:8px">${escapeHtml(d.planning_for.label)} · what the plan is given</div>
+      <div class="row"><span class="label">Budgeted for the month</span><span class="v num">${money(d.budget_for_the_month.budgeted)}</span></div>
+      <div class="row"><span class="label">Same month last year</span><span class="v num">${money(d.same_month_last_year.spending)}</span></div>
+      <div class="row"><span class="label">Recent monthly average</span><span class="v num">${money(d.recent_three_months.monthly_average_spending)}</span></div>
+      ${d.heavier_in_this_month.length ? `<div class="eyebrow" style="margin:16px 0 6px">Heavier in this month than usual</div>` +
+        d.heavier_in_this_month.map((w) => `<div class="row" style="padding:6px 0">
+          <div><span class="label">${escapeHtml(w.group)}</span><div class="sub">usually ${money(w.recent_monthly_average)}/mo</div></div>
+          <span class="v num">${money(w.this_month_last_year)}</span></div>`).join('') : ''}
+      ${d.currently_off_pace.length ? `<div class="eyebrow" style="margin:16px 0 6px">Running hot right now</div>` +
+        d.currently_off_pace.map((c) => `<div class="row" style="padding:6px 0">
+          <span class="label">${escapeHtml(c.category)}</span>
+          <span><span class="v num">${money(c.actual)}</span> <span class="pct">${c.pace}x plan</span></span></div>`).join('') : ''}
+    </div>`;
 }
 
 async function generatePlan() {
@@ -395,7 +396,6 @@ startPage(() => {
     updateGate();
   });
   $('preview').addEventListener('click', preview);
-  $('plan-preview').addEventListener('click', planPreview);
   $('plan').addEventListener('click', generatePlan);
   $('generate').addEventListener('click', () => generate(false));
   $('save-context').addEventListener('click', saveContext);

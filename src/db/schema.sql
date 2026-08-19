@@ -185,7 +185,9 @@ CREATE TABLE IF NOT EXISTS reports (
   period_label TEXT NOT NULL,
   period_from TEXT NOT NULL,
   period_to TEXT NOT NULL,
-  kind TEXT NOT NULL CHECK (kind IN ('month', 'quarter')),
+  -- 'plan' is written before a month; 'month' and 'quarter' after it. They
+  -- share a period without colliding, thanks to UNIQUE(period_from, kind).
+  kind TEXT NOT NULL CHECK (kind IN ('month', 'quarter', 'plan')),
   body TEXT NOT NULL,
   data TEXT NOT NULL,
   model TEXT,

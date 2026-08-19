@@ -62,31 +62,48 @@ function periodOptions() {
         kind === 'quarter'
           ? `Q${v}`
           : new Date(2000, v - 1, 1).toLocaleDateString('en-US', { month: 'long' });
-      return `<option value="${v}">${label}${isComplete(year, v) ? '' : ' — not finished'}</option>`;
+      const state = periodState(year, v);
+      const suffix = state === 'running' ? ' — in progress' : state === 'ahead' ? ' — ahead' : '';
+      return `<option value="${v}">${label}${suffix}</option>`;
     })
     .join('');
 }
 
-/** Whether a period has actually ended. */
-function isComplete(year, value) {
+/** 'past' | 'running' | 'ahead' — three states, not two. */
+function periodState(year, value) {
   const now = new Date();
   const lastMonth = kind === 'quarter' ? value * 3 : value;
-  if (year < now.getFullYear()) return true;
-  if (year > now.getFullYear()) return false;
-  return lastMonth < now.getMonth() + 1;
+  const firstMonth = kind === 'quarter' ? value * 3 - 2 : value;
+  if (year < now.getFullYear()) return 'past';
+  if (year > now.getFullYear()) return 'ahead';
+  if (lastMonth < now.getMonth() + 1) return 'past';
+  if (firstMonth > now.getMonth() + 1) return 'ahead';
+  return 'running';
 }
 
 /** Gates the review on the period being over; the note editor never is. */
+/* Three states need three behaviours. A finished period is reviewed; a running
+   one is reviewed month-to-date, which is honest because the figures prorate
+   the budget and match last year to the same span; one still ahead cannot be
+   reviewed at all, but can be planned for. */
 function updateGate() {
   const year = Number($('year').value);
-  const complete = isComplete(year, Number($('period').value));
+  const state = periodState(year, Number($('period').value));
+  const ahead = state === 'ahead';
 
-  $('generate').disabled = !complete;
-  $('preview').disabled = !complete;
-  $('gate-note').hidden = complete;
-  $('gate-note').textContent = complete
-    ? ''
-    : 'This period has not finished, so there is nothing to review yet — every comparison would be against a partial figure. You can still write its note now.';
+  $('generate').disabled = ahead;
+  $('preview').disabled = ahead;
+  $('plan').hidden = !ahead;
+  $('plan-preview').hidden = !ahead;
+
+  $('gate-note').hidden = state === 'past';
+  $('gate-note').style.color = ahead ? 'var(--muted)' : 'var(--accent)';
+  $('gate-note').textContent =
+    state === 'running'
+      ? 'This month is still running. A review covers it month-to-date, with the budget prorated to today and last year matched to the same span — so it says whether you are on track, not whether the month went well.'
+      : ahead
+        ? 'This month has not started, so there is nothing to review. A plan can be written instead, from what this month costs historically and what is running hot now.'
+        : '';
 }
 
 function periodParams() {
@@ -199,6 +216,46 @@ async function preview() {
     renderFigures(await api(`/reports/preview?${query(periodParams())}`));
   } catch (err) {
     $('preview-out').innerHTML = `<div class="error">${escapeHtml(err.message)}</div>`;
+  }
+}
+
+async function planPreview() {
+  $('preview-out').innerHTML = '<div class="skeleton">Gathering…</div>';
+  try {
+    const d = await api(`/reports/plan/preview?${query(periodParams())}`);
+    $('preview-out').innerHTML = `
+      <div style="margin-top:14px">
+        <div class="eyebrow" style="margin-bottom:8px">${escapeHtml(d.planning_for.label)} · what the plan is given</div>
+        <div class="row"><span class="label">Budgeted for the month</span><span class="v num">${money(d.budget_for_the_month.budgeted)}</span></div>
+        <div class="row"><span class="label">Same month last year</span><span class="v num">${money(d.same_month_last_year.spending)}</span></div>
+        <div class="row"><span class="label">Recent monthly average</span><span class="v num">${money(d.recent_three_months.monthly_average_spending)}</span></div>
+        ${d.heavier_in_this_month.length ? `<div class="eyebrow" style="margin:16px 0 6px">Heavier in this month than usual</div>` +
+          d.heavier_in_this_month.map((w) => `<div class="row" style="padding:6px 0">
+            <div><span class="label">${escapeHtml(w.group)}</span><div class="sub">usually ${money(w.recent_monthly_average)}/mo</div></div>
+            <span class="v num">${money(w.this_month_last_year)}</span></div>`).join('') : ''}
+        ${d.currently_off_pace.length ? `<div class="eyebrow" style="margin:16px 0 6px">Running hot right now</div>` +
+          d.currently_off_pace.map((c) => `<div class="row" style="padding:6px 0">
+            <span class="label">${escapeHtml(c.category)}</span>
+            <span><span class="v num">${money(c.actual)}</span> <span class="pct">${c.pace}x plan</span></span></div>`).join('') : ''}
+      </div>`;
+  } catch (err) {
+    $('preview-out').innerHTML = `<div class="error">${escapeHtml(err.message)}</div>`;
+  }
+}
+
+async function generatePlan() {
+  const button = $('plan');
+  button.disabled = true;
+  button.textContent = 'Writing…';
+  try {
+    renderReport(await api('/reports/plan', { method: 'POST', body: periodParams() }));
+    await load();
+    toast('Plan written.');
+  } catch (err) {
+    showError(err.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Write the plan';
   }
 }
 
@@ -338,6 +395,8 @@ startPage(() => {
     updateGate();
   });
   $('preview').addEventListener('click', preview);
+  $('plan-preview').addEventListener('click', planPreview);
+  $('plan').addEventListener('click', generatePlan);
   $('generate').addEventListener('click', () => generate(false));
   $('save-context').addEventListener('click', saveContext);
   $('save-note').addEventListener('click', saveNote);

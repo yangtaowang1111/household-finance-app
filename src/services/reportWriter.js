@@ -103,4 +103,64 @@ async function writeReport(data, options = {}) {
   };
 }
 
-module.exports = { writeReport, SYSTEM, DEFAULT_MODEL, MODELS };
+const PLAN_SYSTEM = `You are writing a short planning brief for a household, for a month that has not happened yet. You are given what the month cost a year ago, what the last three months have averaged, the budget set for it, whatever is currently overspending, and any notes the household has already written about the month ahead.
+
+This is not a review. Nothing has happened yet. Do not report figures as though they have.
+
+Cover, in this order:
+
+1. **What this month usually costs** — how it compares to a normal month, and which groups drive the difference. Name the amounts.
+2. **What is running hot now** — anything currently over budget or off pace. A category overspending this month tends to keep doing so, and that is the actionable part.
+3. **What to watch** — the overlap between those two lists is the sharpest signal: a category that is expensive in this month historically AND running hot right now. Say so explicitly where it applies.
+4. **Already known** — anything in household_context about the month ahead, and what it means for the figures above.
+
+Rules:
+- Everything here is a projection. Write in terms of what is likely or worth watching, never what happened.
+- Never invent a figure. If something is not in the data, say it is not known.
+- Do not moralise about spending. This is preparation, not judgement.
+- Do not give investment, tax or legal advice.
+- No preamble. Under 400 words — this is read before a month starts, and length is not usefulness.
+
+Format as markdown with those four headings.`;
+
+/**
+ * A forward-looking brief for a month that has not happened.
+ *
+ * @param {object} data  the output of planData()
+ */
+async function writePlan(data, options = {}) {
+  const apiKey = options.apiKey || process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    const err = new Error('ANTHROPIC_API_KEY is not set, so no brief can be generated.');
+    err.missingKey = true;
+    throw err;
+  }
+
+  const client = new Anthropic({ apiKey });
+  const model = MODELS.includes(options.model) ? options.model : DEFAULT_MODEL;
+
+  const response = await client.messages.create({
+    model,
+    max_tokens: MAX_OUTPUT_TOKENS,
+    thinking: { type: 'adaptive' },
+    system: PLAN_SYSTEM,
+    messages: [{ role: 'user', content: `Brief us on the month ahead.
+
+${JSON.stringify(data, null, 2)}` }],
+  });
+
+  const text = response.content
+    .filter((b) => b.type === 'text')
+    .map((b) => b.text)
+    .join('')
+    .trim();
+  if (!text) throw new Error('The model returned no brief.');
+
+  return {
+    text,
+    model,
+    usage: { input_tokens: response.usage.input_tokens, output_tokens: response.usage.output_tokens },
+  };
+}
+
+module.exports = { writeReport, writePlan, SYSTEM, PLAN_SYSTEM, DEFAULT_MODEL, MODELS };

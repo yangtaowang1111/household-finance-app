@@ -507,6 +507,51 @@ const MIGRATIONS = [
       return ['period_notes table'];
     },
   },
+  {
+    version: 14,
+    name: 'reports-allow-plan',
+    up(db) {
+      if (!tableExists(db, 'reports')) return [];
+
+      // A plan is a third kind of document: written before a month, where a
+      // review is written after it. They share a period and must not collide,
+      // which the UNIQUE(period_from, kind) already handles -- but the CHECK
+      // only allowed 'month' and 'quarter'. SQLite cannot alter a CHECK, so the
+      // table is rebuilt.
+      const currentSql = db
+        .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'reports'")
+        .get().sql;
+      if (currentSql.includes("'plan'")) return [];
+
+      db.exec(`
+        CREATE TABLE reports_rebuilt (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          period_label TEXT NOT NULL,
+          period_from TEXT NOT NULL,
+          period_to TEXT NOT NULL,
+          kind TEXT NOT NULL CHECK (kind IN ('month', 'quarter', 'plan')),
+          body TEXT NOT NULL,
+          data TEXT NOT NULL,
+          model TEXT,
+          input_tokens INTEGER,
+          output_tokens INTEGER,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE(period_from, kind)
+        );
+
+        INSERT INTO reports_rebuilt
+          (id, period_label, period_from, period_to, kind, body, data, model, input_tokens, output_tokens, created_at)
+        SELECT
+           id, period_label, period_from, period_to, kind, body, data, model, input_tokens, output_tokens, created_at
+        FROM reports;
+
+        DROP TABLE reports;
+        ALTER TABLE reports_rebuilt RENAME TO reports;
+      `);
+
+      return ["rebuilt reports to allow kind 'plan'"];
+    },
+  },
 ];
 
 const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

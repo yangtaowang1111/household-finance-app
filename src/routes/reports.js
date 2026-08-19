@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../db');
-const { reportData } = require('../services/reportData');
-const { writeReport, MODELS, DEFAULT_MODEL } = require('../services/reportWriter');
+const { reportData, planData } = require('../services/reportData');
+const { writeReport, writePlan, MODELS, DEFAULT_MODEL } = require('../services/reportWriter');
 
 const router = express.Router();
 
@@ -24,6 +24,57 @@ router.get('/preview', (req, res) => {
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
+});
+
+// The figures behind a plan, without spending anything.
+router.get('/plan/preview', (req, res) => {
+  const year = Number(req.query.year) || new Date().getFullYear();
+  const month = req.query.month ? Number(req.query.month) : undefined;
+  if (month !== undefined && (!Number.isInteger(month) || month < 1 || month > 12)) {
+    return res.status(400).json({ error: 'month must be 1-12' });
+  }
+  res.json(planData({ year, month }));
+});
+
+// A brief for a month that has not happened. Stored as kind 'plan' so it never
+// collides with the review of the same month written afterwards -- the two are
+// different documents about one period, and comparing them later is the
+// interesting part.
+router.post('/plan', async (req, res) => {
+  const year = Number(req.body && req.body.year) || new Date().getFullYear();
+  const month = req.body && req.body.month ? Number(req.body.month) : undefined;
+  if (month !== undefined && (!Number.isInteger(month) || month < 1 || month > 12)) {
+    return res.status(400).json({ error: 'month must be 1-12' });
+  }
+
+  const data = planData({ year, month });
+  let written;
+  try {
+    const chosen = db.prepare("SELECT value FROM settings WHERE key = 'report_model'").get();
+    written = await writePlan(data, { model: chosen && chosen.value });
+  } catch (err) {
+    return res.status(err.missingKey ? 400 : 502).json({ error: err.message });
+  }
+
+  db.prepare(
+    `INSERT INTO reports (period_label, period_from, period_to, kind, body, data, model, input_tokens, output_tokens)
+     VALUES (@label, @from, @to, 'plan', @body, @data, @model, @input_tokens, @output_tokens)
+     ON CONFLICT(period_from, kind) DO UPDATE SET
+       body = excluded.body, data = excluded.data, model = excluded.model,
+       input_tokens = excluded.input_tokens, output_tokens = excluded.output_tokens,
+       created_at = datetime('now')`
+  ).run({
+    label: `Plan for ${data.planning_for.label}`,
+    from: data.planning_for.from,
+    to: data.planning_for.to,
+    body: written.text,
+    data: JSON.stringify(data),
+    model: written.model,
+    input_tokens: written.usage.input_tokens,
+    output_tokens: written.usage.output_tokens,
+  });
+
+  res.json(shape(db.prepare("SELECT * FROM reports WHERE period_from = ? AND kind = 'plan'").get(data.planning_for.from)));
 });
 
 router.post('/', async (req, res) => {

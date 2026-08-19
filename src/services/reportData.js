@@ -40,12 +40,20 @@ function periodBounds({ year, month, quarter }) {
   };
 }
 
-/** The same period one year earlier, for a like-for-like comparison. */
-function priorYearBounds(bounds, year) {
-  return {
-    from: bounds.from.replace(String(year), String(year - 1)),
-    to: bounds.to.replace(String(year), String(year - 1)).replace(String(year + 1), String(year)),
-  };
+/**
+ * The same period one year earlier — and for a period still running, the same
+ * PART of it.
+ *
+ * Comparing nineteen days of August against all of last August is wrong in the
+ * most reassuring direction: it makes an ordinary month look frugal. The prior
+ * window is therefore truncated to the same day of the month.
+ */
+function priorYearBounds(bounds, year, throughDate) {
+  const from = bounds.from.replace(String(year), String(year - 1));
+  const to = throughDate
+    ? throughDate.replace(String(year), String(year - 1))
+    : bounds.to.replace(String(year), String(year - 1)).replace(String(year + 1), String(year));
+  return { from, to };
 }
 
 function reportData(options = {}) {
@@ -55,10 +63,25 @@ function reportData(options = {}) {
   const month = quarter ? null : options.month || now.getMonth() || 12;
 
   const bounds = periodBounds({ year, month, quarter });
-  const prior = priorYearBounds(bounds, year);
 
-  const period = cashflow({ from: bounds.from, to: bounds.to });
+  // A period still running is reported as far as it has actually got, not to its
+  // nominal end -- otherwise every figure in it is compared against a month that
+  // has not happened.
+  const today = now.toISOString().slice(0, 10);
+  const tomorrow = new Date(now.getTime() + 86400000).toISOString().slice(0, 10);
+  const inProgress = bounds.from <= today && today < bounds.to;
+  const effectiveTo = inProgress ? tomorrow : bounds.to;
+
+  const prior = priorYearBounds(bounds, year, inProgress ? tomorrow : null);
+
+  const period = cashflow({ from: bounds.from, to: effectiveTo });
   const lastYear = cashflow({ from: prior.from, to: prior.to });
+
+  // How far through, so nothing downstream mistakes a part-month for a whole one.
+  const daysElapsed = inProgress
+    ? Math.round((new Date(today) - new Date(bounds.from)) / 86400000) + 1
+    : Math.round((new Date(bounds.to) - new Date(bounds.from)) / 86400000);
+  const daysInPeriod = Math.round((new Date(bounds.to) - new Date(bounds.from)) / 86400000);
 
   // Biggest movers against the same period last year. Ranked by absolute
   // change, because a category that halved matters as much as one that doubled.
@@ -97,6 +120,11 @@ function reportData(options = {}) {
   // Things a person needs to know before trusting any of the above. Stated as
   // data so the reviewer cannot miss them.
   const caveats = [];
+  if (inProgress) {
+    caveats.push(
+      `This period is ${daysElapsed} of ${daysInPeriod} days in. Figures are month-to-date, budgets are prorated to the same point, and last year's comparison covers the same span — but the remaining ${daysInPeriod - daysElapsed} days are unknown.`
+    );
+  }
   if (period.uncategorized_transactions > 0) {
     caveats.push(`${period.uncategorized_transactions} transactions in this period are uncategorised and excluded from every total.`);
   }
@@ -113,7 +141,20 @@ function reportData(options = {}) {
   if (untracked) caveats.push(`${untracked} properties have no mortgage linked, so their equity is unknown.`);
 
   return {
-    period: { label: bounds.label, from: bounds.from, to: bounds.to, year, month, quarter },
+    period: {
+      label: inProgress ? `${bounds.label} so far` : bounds.label,
+      from: bounds.from,
+      to: effectiveTo,
+      year,
+      month,
+      quarter,
+      // Stated plainly, because every comparison below depends on it. A
+      // part-month compared against a whole one reads as thrift.
+      in_progress: inProgress,
+      days_elapsed: daysElapsed,
+      days_in_period: daysInPeriod,
+      prior_year_window: `${prior.from} to ${prior.to} (matched to the same span)`,
+    },
     cash_flow: {
       income: period.income,
       spending: period.spending,
@@ -195,4 +236,98 @@ function context(year, throughMonth) {
   };
 }
 
-module.exports = { reportData, periodBounds };
+/**
+ * A briefing for a month that has not happened.
+ *
+ * Deliberately not a review with the numbers left out. A review asks what
+ * happened; this asks what is likely to, which needs different evidence: the
+ * same month a year ago (what recurs), the last three months (what is trending
+ * into it), the budget for the month itself, and whatever the household has
+ * already written down about it.
+ *
+ * The most useful part is usually the overlap — a category that ran hot last
+ * month AND was expensive this month last year is the one to watch, and neither
+ * fact alone would say so.
+ */
+function planData(options = {}) {
+  const now = new Date();
+  const year = options.year || now.getFullYear();
+  // getMonth() is zero-indexed, so +2 is "next month" as a 1-12 value.
+  const nextMonth = now.getMonth() + 2;
+  const month = options.month || (nextMonth > 12 ? 1 : nextMonth);
+  const target = periodBounds({ year, month });
+
+  // Same month, a year earlier: what this month costs when it comes round.
+  const lastYear = cashflow({
+    from: target.from.replace(String(year), String(year - 1)),
+    to: target.to.replace(String(year), String(year - 1)).replace(String(year + 1), String(year)),
+  });
+
+  // The three months before the target, as the trend running into it.
+  const start = new Date(year, month - 4, 1);
+  const end = new Date(year, month - 1, 1);
+  const recent = cashflow({
+    from: start.toISOString().slice(0, 10),
+    to: end.toISOString().slice(0, 10),
+  });
+
+  // Where the budget for the target month sits, and what is already off pace in
+  // the month now running — a category overspending today is the one likely to
+  // overspend again.
+  const budget = budgetProgress({ year, month });
+  const runningMonth = now.getFullYear() === year && now.getMonth() + 1 < month
+    ? budgetProgress({ year, month: now.getMonth() + 1 })
+    : null;
+
+  const offPace = runningMonth
+    ? runningMonth.groups
+        .flatMap((g) => g.categories)
+        .filter((c) => c.pace !== null && c.pace > 1.1)
+        .sort((a, b) => b.pace - a.pace)
+        .slice(0, 8)
+        .map((c) => ({ category: c.name, budgeted: c.budgeted, actual: c.actual, pace: c.pace }))
+    : [];
+
+  const lastYearByGroup = new Map(lastYear.groups.map((g) => [g.group, -g.total]));
+  const recentByGroup = new Map(recent.groups.map((g) => [g.group, -g.total / 3]));
+
+  // A group that is both expensive in this month historically and running above
+  // its recent average is the one worth naming.
+  const watch = [...lastYearByGroup.entries()]
+    .filter(([group, amount]) => amount > 0 && group !== 'Income')
+    .map(([group, lastYearAmount]) => ({
+      group,
+      this_month_last_year: round2(lastYearAmount),
+      recent_monthly_average: round2(recentByGroup.get(group) || 0),
+      above_recent_by: round2(lastYearAmount - (recentByGroup.get(group) || 0)),
+    }))
+    .sort((a, b) => b.above_recent_by - a.above_recent_by)
+    .slice(0, 8);
+
+  return {
+    planning_for: { label: target.label, from: target.from, to: target.to, year, month },
+    budget_for_the_month: {
+      budgeted: budget.budgeted,
+      by_group: budget.groups.map((g) => ({ group: g.name, budgeted: g.budgeted })),
+    },
+    same_month_last_year: {
+      income: lastYear.income,
+      spending: lastYear.spending,
+      by_group: lastYear.groups
+        .filter((g) => g.counts_as_spending && g.total < 0)
+        .map((g) => ({ group: g.group, amount: round2(-g.total) }))
+        .sort((a, b) => b.amount - a.amount),
+    },
+    recent_three_months: {
+      monthly_average_spending: round2(recent.spending / 3),
+      monthly_average_income: round2(recent.income / 3),
+    },
+    // Groups that cost more in this month historically than they do normally.
+    heavier_in_this_month: watch,
+    // Categories overspending right now, which tend to keep doing so.
+    currently_off_pace: offPace,
+    household_context: context(year, month),
+  };
+}
+
+module.exports = { reportData, planData, periodBounds };

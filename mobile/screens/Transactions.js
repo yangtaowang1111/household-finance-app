@@ -1,15 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Text, TextInput, View, useColorScheme } from 'react-native';
-import { router } from 'expo-router';
-import { api, money, shortDate } from '../../lib/api';
-import { colors, radius, space, type } from '../../lib/theme';
+import { api, money, shortDate } from '../lib/api';
+import { colors, radius, space, type } from '../lib/theme';
 
 /* Transactions. A FlatList rather than the Screen wrapper: two and a half
    thousand rows have to virtualise, and a ScrollView would render them all.
  *
  * Search is debounced and runs on the server, because the phone should not hold
  * the whole ledger to filter it. */
-export default function Transactions() {
+export default function Transactions({ onNeedsSetup }) {
   const c = colors(useColorScheme());
   const [search, setSearch] = useState('');
   const [state, setState] = useState({ loading: true, error: null, rows: [] });
@@ -21,7 +20,7 @@ export default function Transactions() {
       const rows = await api(`/transactions?${query}`);
       setState({ loading: false, error: null, rows });
     } catch (err) {
-      if (err.needsSetup) return router.push('/settings');
+      if (err.needsSetup) return onNeedsSetup && onNeedsSetup();
       setState({ loading: false, error: err.message, rows: [] });
     }
   }, []);
@@ -95,12 +94,12 @@ export default function Transactions() {
             >
               <View style={{ flex: 1 }}>
                 <Text style={{ ...type.body, color: c.text }} numberOfLines={1}>
-                  {t.payee || t.merchant_raw || '—'}
+                  {t.payee || t.merchant_raw || 'â€”'}
                 </Text>
                 <Text style={{ ...type.footnote, color: c.muted, marginTop: 1 }} numberOfLines={1}>
                   {shortDate(t.date)}, {t.date.slice(0, 4)}
-                  {t.category_group ? ` · ${t.category_group}` : ' · uncategorised'}
-                  {t.pending ? ' · pending' : ''}
+                  {t.category_group ? ` Â· ${t.category_group}` : ' Â· uncategorised'}
+                  {t.pending ? ' Â· pending' : ''}
                 </Text>
               </View>
               <Text

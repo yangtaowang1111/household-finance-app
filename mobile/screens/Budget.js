@@ -1,17 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import { router } from 'expo-router';
-import { api, money } from '../../lib/api';
-import { Row, Screen, Section, useTheme } from '../../lib/ui';
-import { radius, space, type } from '../../lib/theme';
+import { api, money } from '../lib/api';
+import { Row, Screen, Section, useTheme } from '../lib/ui';
+import { radius, space, type } from '../lib/theme';
 
 /* Budget, read-only on the phone.
  *
  * Setting a budget across fifty-nine categories is keyboard work and belongs on
- * the web version. What a phone is for is the other half of the question —
- * "am I over?" — answered while standing in a shop, which is exactly when it
+ * the web version. What a phone is for is the other half of the question â€”
+ * "am I over?" â€” answered while standing in a shop, which is exactly when it
  * matters and exactly when a laptop is not to hand. */
-export default function Budget() {
+export default function Budget({ onNeedsSetup }) {
   const c = useTheme();
   const [mode, setMode] = useState('month');
   const [state, setState] = useState({ loading: true, error: null, data: null });
@@ -25,7 +24,7 @@ export default function Budget() {
       const data = await api(`/budgets/progress?${query}`);
       setState({ loading: false, error: null, data });
     } catch (err) {
-      if (err.needsSetup) return router.push('/settings');
+      if (err.needsSetup) return onNeedsSetup && onNeedsSetup();
       setState({ loading: false, error: err.message, data: null });
     }
   }, []);
@@ -111,7 +110,7 @@ export default function Budget() {
         </Section>
       ) : (
         <Section footer="Nothing is over its budget in this period.">
-          <Row label="All categories within budget" value="✓" valueColor={c.pos} />
+          <Row label="All categories within budget" value="âœ“" valueColor={c.pos} />
         </Section>
       )}
 
@@ -121,7 +120,7 @@ export default function Budget() {
             key={g.group_id}
             label={g.name}
             sub={`${money(g.actual)} of ${money(g.budgeted)}`}
-            value={g.used_percent === null ? '—' : `${g.used_percent}%`}
+            value={g.used_percent === null ? 'â€”' : `${g.used_percent}%`}
             valueColor={g.over ? c.attn : c.muted}
           />
         ))}

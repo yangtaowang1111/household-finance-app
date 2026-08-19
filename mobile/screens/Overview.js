@@ -1,18 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
-import { router } from 'expo-router';
-import { api, money } from '../../lib/api';
-import { Hero, Row, Screen, Section, useTheme } from '../../lib/ui';
-import { space, type } from '../../lib/theme';
+import { api, money } from '../lib/api';
+import { Hero, Row, Screen, Section, useTheme } from '../lib/ui';
+import { space, type } from '../lib/theme';
 
 /* Overview. The same four questions the web version answers, ordered for a
    phone: net worth first because it is what you open the app to see, then this
    period's flow, then where the money went.
  *
- * The spending breakdown is the one place a phone genuinely beats the desktop —
+ * The spending breakdown is the one place a phone genuinely beats the desktop â€”
  * a ranked list with a proportion bar reads better on a narrow screen than the
  * web version's two columns. */
-export default function Overview() {
+export default function Overview({ onNeedsSetup }) {
   const c = useTheme();
   const [state, setState] = useState({ loading: true, error: null, data: null });
 
@@ -26,7 +25,7 @@ export default function Overview() {
       ]);
       setState({ loading: false, error: null, data: { nw, cf, year } });
     } catch (err) {
-      if (err.needsSetup) return router.push('/settings');
+      if (err.needsSetup) return onNeedsSetup && onNeedsSetup();
       setState({ loading: false, error: err.message, data: null });
     }
   }, []);
@@ -49,7 +48,7 @@ export default function Overview() {
       <Hero
         label="Net worth"
         value={money(nw.net_worth)}
-        delta={`${money(nw.assets)} assets · ${money(nw.liabilities)} owed`}
+        delta={`${money(nw.assets)} assets Â· ${money(nw.liabilities)} owed`}
       />
 
       <Section title={`${year} to date`}>
@@ -64,7 +63,7 @@ export default function Overview() {
         <Row
           label="Savings rate"
           sub="earned and not spent"
-          value={cf.savings_rate === null ? '—' : `${cf.savings_rate}%`}
+          value={cf.savings_rate === null ? 'â€”' : `${cf.savings_rate}%`}
           valueColor={c.text}
         />
       </Section>
@@ -107,7 +106,7 @@ export default function Overview() {
       </Section>
 
       <Section footer="Pull down to refresh. Figures come straight from the NAS.">
-        <Row label="Connection" value="Settings" onPress={() => router.push('/settings')} />
+        <Row label="Connection" value="Settings" onPress={onNeedsSetup} />
       </Section>
     </Screen>
   );

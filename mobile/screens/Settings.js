@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
-import { router } from 'expo-router';
 import { DEFAULT_BASE_URL, loadConfig, saveConfig } from '../lib/api';
 import { Section, useTheme } from '../lib/ui';
 import { radius, space, type } from '../lib/theme';
@@ -12,7 +11,7 @@ import { radius, space, type } from '../lib/theme';
  * to. Both values live on the device: compiling the address in would mean
  * rebuilding the app to change it, and compiling the key in would put it in a
  * public repository. */
-export default function Settings() {
+export default function Settings({ onDone }) {
   const c = useTheme();
   const [baseUrl, setBaseUrl] = useState(DEFAULT_BASE_URL);
   const [apiKey, setApiKey] = useState('');
@@ -35,10 +34,10 @@ export default function Settings() {
   };
 
   async function save() {
-    setStatus('Checking…');
+    setStatus('Checkingâ€¦');
     await saveConfig({ baseUrl: baseUrl.trim(), apiKey: apiKey.trim() });
     try {
-      // Proves the whole path — tailnet, server, key — before letting the user
+      // Proves the whole path â€” tailnet, server, key â€” before letting the user
       // leave thinking it worked.
       const res = await fetch(`${baseUrl.trim()}/api/networth`, {
         headers: { 'x-api-key': apiKey.trim() },
@@ -46,7 +45,7 @@ export default function Settings() {
       if (res.status === 401 || res.status === 403) return setStatus('That key was rejected.');
       if (!res.ok) return setStatus(`Server answered ${res.status}.`);
       setStatus('Connected.');
-      setTimeout(() => router.back(), 500);
+      setTimeout(() => onDone(), 500);
     } catch {
       setStatus('Could not reach it. Check Tailscale is connected on this device.');
     }
@@ -54,9 +53,16 @@ export default function Settings() {
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg, padding: space.lg }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: space.lg }}>
+        <Text style={{ ...type.largeTitle, color: c.text }}>Connection</Text>
+        <Pressable onPress={onDone} hitSlop={12}>
+          <Text style={{ ...type.subhead, color: c.accent }}>Done</Text>
+        </Pressable>
+      </View>
+
       <Section
         title="NAS address"
-        footer="The Tailscale address of the NAS. Reachable only while this device is on the tailnet — there is no public port."
+        footer="The Tailscale address of the NAS. Reachable only while this device is on the tailnet â€” there is no public port."
       >
         <View style={{ padding: space.md }}>
           <TextInput

@@ -11,7 +11,12 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.household.ledger"
     },
-    "plugins": ["expo-router"],
-    "experiments": { "typedRoutes": false }
+    "plugins": [
+      "expo-router",
+      "expo-status-bar"
+    ],
+    "experiments": {
+      "typedRoutes": false
+    }
   }
 }

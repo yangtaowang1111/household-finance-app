@@ -8,8 +8,14 @@
     "ios": "expo start --ios"
   },
   "dependencies": {
+    "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "latest",
+    "expo-router": "~57.0.14",
+    "expo-status-bar": "~57.0.1",
+    "expo-symbols": "~57.0.2",
     "react": "latest",
-    "react-native": "latest"
+    "react-native": "latest",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "~4.26.0"
   }
 }
